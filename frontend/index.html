@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="#1a1a2e"/>
+  <title>Zarządzanie Wynajmem</title>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-title" content="Wynajem"/>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    #root { min-height:100vh; }
+    #loading { display:flex; align-items:center; justify-content:center; min-height:100vh; background:#1a1a2e; color:white; font-size:1.2rem; }
+  </style>
+</head>
+<body>
+  <div id="loading">⏳ Ładowanie aplikacji…</div>
+  <div id="root" style="display:none"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <script>
+  const ICONS = {
+    Calculator:  [['path',{d:'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z'}],['line',{x1:'16',y1:'9',x2:'8',y2:'9'}],['line',{x1:'16',y1:'13',x2:'8',y2:'13'}],['line',{x1:'10',y1:'17',x2:'8',y2:'17'}],['line',{x1:'12',y1:'17',x2:'12',y2:'17'}],['line',{x1:'14',y1:'17',x2:'16',y2:'17'}]],
+    TrendingUp:  [['polyline',{points:'23 6 13.5 15.5 8.5 10.5 1 18'}],['polyline',{points:'17 6 23 6 23 12'}]],
+    Droplet:     [['path',{d:'M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z'}]],
+    Flame:       [['path',{d:'M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z'}]],
+    Zap:         [['polygon',{points:'13 2 3 14 12 14 11 22 21 10 12 10 13 2'}]],
+    Home:        [['path',{d:'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'}],['polyline',{points:'9 22 9 12 15 12 15 22'}]],
+    Trash2:      [['polyline',{points:'3 6 5 6 21 6'}],['path',{d:'M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6'}],['path',{d:'M10 11v6'}],['path',{d:'M14 11v6'}],['path',{d:'M9 6V4h6v2'}]],
+    Edit2:       [['path',{d:'M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z'}]],
+    Save:        [['path',{d:'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z'}],['polyline',{points:'17 21 17 13 7 13 7 21'}],['polyline',{points:'7 3 7 8 15 8'}]],
+    X:           [['line',{x1:'18',y1:'6',x2:'6',y2:'18'}],['line',{x1:'6',y1:'6',x2:'18',y2:'18'}]],
+    FileText:    [['path',{d:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'}],['polyline',{points:'14 2 14 8 20 8'}],['line',{x1:'16',y1:'13',x2:'8',y2:'13'}],['line',{x1:'16',y1:'17',x2:'8',y2:'17'}],['polyline',{points:'10 9 9 9 8 9'}]],
+    ChevronDown: [['polyline',{points:'6 9 12 15 18 9'}]],
+    ChevronUp:   [['polyline',{points:'18 15 12 9 6 15'}]],
+    ArrowLeft:   [['line',{x1:'19',y1:'12',x2:'5',y2:'12'}],['polyline',{points:'12 19 5 12 12 5'}]],
+    Building2:   [['path',{d:'M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18z'}],['path',{d:'M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2'}],['path',{d:'M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 0-2 2h-2'}],['line',{x1:'10',y1:'6',x2:'10',y2:'6'}],['line',{x1:'14',y1:'6',x2:'14',y2:'6'}],['line',{x1:'10',y1:'10',x2:'10',y2:'10'}],['line',{x1:'14',y1:'10',x2:'14',y2:'10'}],['line',{x1:'10',y1:'14',x2:'10',y2:'14'}],['line',{x1:'14',y1:'14',x2:'14',y2:'14'}]]
+  };
+  window.Icon = function({ name, size=24, color='currentColor', ...rest }) {
+    const paths = ICONS[name];
+    if (!paths) return null;
+    return React.createElement('svg', { xmlns:'http://www.w3.org/2000/svg', width:size, height:size, viewBox:'0 0 24 24', fill:'none', stroke:color, strokeWidth:2, strokeLinecap:'round', strokeLinejoin:'round', ...rest },
+      ...paths.map(([tag, attrs], i) => React.createElement(tag, { key:i, ...attrs }))
+    );
+  };
+  </script>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+    const Icon = window.Icon;
+
+    const MIESIACE = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
+
+    // ══════ KONFIGURACJA BACKENDU (Cloudflare Worker + D1) ══════
+    // Po wdrożeniu Workera (patrz DEPLOYMENT_GUIDE.md) uzupełnij poniższe dwie wartości:
+    //  - API_BASE: adres Twojego Workera, np. https://wynajem-api.twoj-login.workers.dev
+    //  - API_TOKEN: dokładnie ten sam token, który ustawiłeś przez `wrangler secret put API_TOKEN`
+    const APP_CONFIG = {
+      API_BASE: 'https://wynajem-api.TWOJ-LOGIN.workers.dev',
+      API_TOKEN: 'ZMIEN_TEN_TOKEN',
+    };
+
+    const NIERUCHOMOSCI = [
+      { id:'zdrojowa',       nazwa:'Zdrojowa',      adres:'ul. Zdrojowa',       kolor:'#8b4513', kolor2:'#a0522d', ikona:'🏡' },
+      { id:'makuszynskiego', nazwa:'Makuszyńskiego', adres:'ul. Makuszyńskiego', kolor:'#1565c0', kolor2:'#1976d2', ikona:'🏢' },
+      { id:'chrobrego',      nazwa:'Chrobrego',      adres:'ul. Chrobrego',      kolor:'#2e7d32', kolor2:'#388e3c', ikona:'🏠' },
+    ];
+    const MIESZKANIA_GAZ = [
+      { id:'chrobrego1', nazwa:'Chrobrego 1', kolor:'#c62828', kolor2:'#e53935' },
+      { id:'chrobrego2', nazwa:'Chrobrego 2', kolor:'#e65100', kolor2:'#f57c00' },
+      { id:'chrobrego3', nazwa:'Chrobrego 3', kolor:'#bf360c', kolor2:'#d84315' },
+    ];
+
+    const DEFAULT_STAWKI = { gaz:5.0, woda:21.0, nieczystosci:12.0, wynajem:2000.0, czynsz:473.0, abonamentGaz:21.0, garaz:0.0 };
+    const IS = { width:'100%', padding:'0.75rem', fontSize:'1rem', fontFamily:'Consolas,"Courier New",monospace', border:'2px solid #e8dcc8', borderRadius:'6px', outline:'none', boxSizing:'border-box', background:'white' };
+    const IB = (bg, col) => ({ width:32, height:32, border:'none', borderRadius:'7px', background:bg, color:col, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 1px 4px rgba(0,0,0,0.1)', transition:'transform 0.15s', flexShrink:0 });
+
+    // ══════ WARSTWA ZAPISU: Cloudflare Worker + D1 ══════
+    // WAŻNE (poprawka błędu z znikającymi rozliczeniami gazu):
+    // Poprzednia wersja store.get() ZAWSZE łapała błędy sieci/timeoutu i zwracała `null`,
+    // dokładnie tak samo jak dla klucza, który po prostu nie istnieje. Kod wyżej (ekran
+    // "Rozliczenie Gazu") traktował `null` jako "nigdy nie było danych" i sam, automatycznie,
+    // NADPISYWAŁ bazę pustym obiektem — dlatego całe miesiące odczytów potrafiły zniknąć
+    // przy zwykłym błędzie sieci/timeoutu Google Apps Script.
+    //
+    // Poniżej store.get() RZUCA wyjątkiem przy błędzie połączenia/HTTP, a zwraca `null`
+    // TYLKO wtedy, gdy serwer wprost powiedział "found:false". Dzięki temu żaden ekran nie
+    // może już pomylić "chwilowego braku połączenia" z "tu nigdy nie było danych".
+    const store = {
+      async get(key) {
+        const res = await fetch(`${APP_CONFIG.API_BASE}/api/kv?key=${encodeURIComponent(key)}`, {
+          headers: { 'X-Api-Key': APP_CONFIG.API_TOKEN }
+        });
+        if (!res.ok) throw new Error(`Błąd serwera (HTTP ${res.status}) przy odczycie "${key}"`);
+        const d = await res.json();
+        return d && d.found ? { value: d.value } : null;
+      },
+      async set(key, value) {
+        const res = await fetch(`${APP_CONFIG.API_BASE}/api/kv`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Api-Key': APP_CONFIG.API_TOKEN },
+          body: JSON.stringify({ key, value })
+        });
+        if (!res.ok) throw new Error(`Błąd serwera (HTTP ${res.status}) przy zapisie "${key}"`);
+        const d = await res.json();
+        return d && d.ok === true;
+      },
+      async test() {
+        const log = [], ts = 'test_' + Date.now();
+        log.push('1. Testuję ZAPIS...');
+        try { log.push((await store.set('_diag_', ts)) ? '   ✅ OK' : '   ❌ false'); } catch(e) { log.push('   ❌ ' + e.message); }
+        log.push('2. Testuję ODCZYT...');
+        try {
+          const r = await store.get('_diag_');
+          log.push(!r ? '   ❌ brak' : r.value === ts ? '   ✅ OK: ' + r.value : '   ⚠️ ' + r.value);
+        } catch(e) { log.push('   ❌ ' + e.message); }
+        log.push('3. Dane nieruchomości...');
+        for (const n of NIERUCHOMOSCI) {
+          try { const r = await store.get('rental-odczyty-' + n.id); log.push('   ' + n.nazwa + ': ' + (!r ? 'brak' : '✅ ' + JSON.parse(r.value).length + ' wpisów')); }
+          catch(e) { log.push('   ' + n.nazwa + ': ❌ ' + e.message); }
+        }
+        log.push('4. Dane liczników gazu...');
+        try {
+          const r = await store.get(GAZ_KEY);
+          if (!r) log.push('   brak');
+          else {
+            const parsed = JSON.parse(r.value);
+            log.push('   ✅ ' + Object.keys(parsed).map(k => `${k}: ${(parsed[k]||[]).length}`).join(', '));
+          }
+        } catch(e) { log.push('   ❌ ' + e.message); }
+        return log.join('\n');
+      }
+    };
+
+    const oblicz = (stanGazu, stanWody, prad, sg, prev, st, id) => {
+      const zuzycieGazu = prev ? stanGazu - prev.stanGazu : 0;
+      const zuzycieWody = prev ? stanWody - prev.stanWody : 0;
+      const kosztGazu = zuzycieGazu * sg;
+      const kosztWody = zuzycieWody * st.woda;
+      const nieczystosci = zuzycieWody * st.nieczystosci;
+      const gazZAbonamentem = kosztGazu + st.abonamentGaz;
+      const wodaDoSumy = id === 'chrobrego' ? 0 : kosztWody;
+      const suma = st.wynajem + st.czynsz + gazZAbonamentem + wodaDoSumy + nieczystosci + prad + (st.garaz || 0);
+      return { zuzycieGazu, zuzycieWody, kosztGazu, kosztWody, nieczystosci, gazZAbonamentem, suma };
+    };
+
+    const getNext = odczyty => {
+      if (!odczyty.length) return 'Styczeń 2026';
+      const [mn, rs] = odczyty[odczyty.length-1].miesiac.split(' ');
+      const idx = MIESIACE.indexOf(mn), r = parseInt(rs);
+      if (idx === -1) return 'Styczeń 2026';
+      return idx === 11 ? `Styczeń ${r+1}` : `${MIESIACE[idx+1]} ${r}`;
+    };
+
+    // ══════ KARTA LICZNIKA GAZU ══════
+    function KartaLicznika({ mieszkanie, odczyty, setOdczyty }) {
+      const { id, nazwa, kolor, kolor2 } = mieszkanie;
+      const [stan,      setStan]      = useState('');
+      const [editMode,  setEditMode]  = useState(false);
+      const [editIndex, setEditIndex] = useState(null);
+      const [editStan,  setEditStan]  = useState('');
+
+      const ostatni      = odczyty.length ? odczyty[odczyty.length-1] : null;
+      const przedostatni = odczyty.length > 1 ? odczyty[odczyty.length-2] : null;
+
+      const dodaj = () => {
+        const v = parseInt(stan);
+        if (!stan || isNaN(v)) { alert('Podaj stan licznika dla ' + nazwa); return; }
+        const prev = odczyty.length ? odczyty[odczyty.length-1] : null;
+        setOdczyty([...odczyty, { miesiac: getNext(odczyty), stan: v, zuzycie: prev ? v - prev.stan : 0 }]);
+        setStan('');
+      };
+
+      const startEdit = i => { setEditStan(String(odczyty[i].stan)); setEditMode(true); setEditIndex(i); };
+      const anuluj    = () => { setEditMode(false); setEditIndex(null); setEditStan(''); };
+      const zapiszEdycje = () => {
+        const v = parseInt(editStan);
+        if (isNaN(v)) return;
+        const kopia = [...odczyty];
+        const prev = editIndex > 0 ? kopia[editIndex-1] : null;
+        kopia[editIndex] = { ...kopia[editIndex], stan: v, zuzycie: prev ? v - prev.stan : 0 };
+        if (editIndex + 1 < kopia.length) kopia[editIndex+1] = { ...kopia[editIndex+1], zuzycie: kopia[editIndex+1].stan - v };
+        setOdczyty(kopia); anuluj();
+      };
+
+      return (
+        <div style={{ background:'white', borderRadius:'16px', overflow:'hidden', boxShadow:`0 6px 24px ${kolor}28`, border:`2px solid ${kolor}28` }}>
+          {/* Nagłówek */}
+          <div style={{ background:`linear-gradient(135deg,${kolor},${kolor2})`, padding:'1rem 1.25rem', display:'flex', alignItems:'center', gap:'0.6rem' }}>
+            <div style={{ fontSize:'1.5rem' }}>🔥</div>
+            <div>
+              <div style={{ color:'white', fontWeight:800, fontSize:'1.05rem' }}>{nazwa}</div>
+              <div style={{ color:'rgba(255,255,255,0.8)', fontSize:'0.75rem' }}>{odczyty.length} odczyt(ów)</div>
+            </div>
+          </div>
+
+          {/* Ostatni stan + zużycie */}
+          {ostatni && (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', borderBottom:`1px solid ${kolor}22` }}>
+              <div style={{ padding:'0.75rem 0.5rem', background:`${kolor}08`, borderRight:`1px solid ${kolor}22`, textAlign:'center' }}>
+                <div style={{ fontSize:'0.63rem', color:kolor, textTransform:'uppercase', fontWeight:700, marginBottom:'0.2rem' }}>Ostatni stan</div>
+                <div style={{ fontSize:'1.15rem', fontWeight:800, color:'#333' }}>{Math.round(ostatni.stan)} <span style={{ fontSize:'0.7rem', color:'#888' }}>m³</span></div>
+                <div style={{ fontSize:'0.68rem', color:'#999', marginTop:'0.1rem' }}>{ostatni.miesiac}</div>
+              </div>
+              <div style={{ padding:'0.75rem 0.5rem', background:'#fff3e0', textAlign:'center' }}>
+                <div style={{ fontSize:'0.63rem', color:'#e65100', textTransform:'uppercase', fontWeight:700, marginBottom:'0.2rem' }}>Zużycie</div>
+                <div style={{ fontSize:'1.15rem', fontWeight:800, color:'#e65100' }}>
+                  {przedostatni ? Math.round(ostatni.zuzycie) : '—'} <span style={{ fontSize:'0.7rem' }}>m³</span>
+                </div>
+                <div style={{ fontSize:'0.68rem', color:'#999', marginTop:'0.1rem' }}>{przedostatni ? 'od ' + przedostatni.miesiac : 'pierwszy odczyt'}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Formularz */}
+          <div style={{ padding:'0.875rem 1rem', borderBottom:`1px solid ${kolor}18`, background:`${kolor}05` }}>
+            <div style={{ fontSize:'0.72rem', color:kolor, fontWeight:700, marginBottom:'0.4rem', display:'flex', alignItems:'center', gap:'0.25rem' }}>
+              <Icon name="Flame" size={12} color={kolor}/> Nowy odczyt – {getNext(odczyty)}
+            </div>
+            <div style={{ display:'flex', gap:'0.4rem' }}>
+              <input type="number" step="1" placeholder="Stan (m³)" value={stan}
+                onChange={e => setStan(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && dodaj()}
+                style={{ ...IS, flex:1, fontSize:'0.9rem', border:`2px solid ${kolor}`, color:kolor, padding:'0.45rem 0.6rem' }}/>
+              <button onClick={dodaj}
+                style={{ padding:'0.45rem 0.875rem', background:`linear-gradient(135deg,${kolor},${kolor2})`, color:'white', border:'none', borderRadius:'7px', fontWeight:700, cursor:'pointer', fontSize:'0.85rem', display:'flex', alignItems:'center', gap:'0.25rem' }}>
+                <Icon name="Save" size={14}/> Dodaj
+              </button>
+            </div>
+          </div>
+
+          {/* Historia */}
+          <div style={{ maxHeight:220, overflowY:'auto' }}>
+            {odczyty.length === 0 && (
+              <div style={{ padding:'1rem', textAlign:'center', color:'#ccc', fontSize:'0.82rem' }}>Brak odczytów</div>
+            )}
+            {[...odczyty].reverse().map((o, ri) => {
+              const i = odczyty.length - 1 - ri;
+              const prev = i > 0 ? odczyty[i-1] : null;
+              const isEditing = editMode && editIndex === i;
+              return (
+                <div key={i} style={{ borderBottom:`1px solid ${kolor}10`, padding:'0.45rem 0.875rem', background: ri % 2 === 0 ? 'white' : `${kolor}04` }}>
+                  {isEditing ? (
+                    <div style={{ display:'flex', gap:'0.4rem', alignItems:'center' }}>
+                      <span style={{ fontSize:'0.78rem', fontWeight:700, color:'#5d4037', minWidth:82, flexShrink:0 }}>{o.miesiac}</span>
+                      <input type="number" step="1" value={editStan} onChange={e => setEditStan(e.target.value)}
+                        style={{ ...IS, flex:1, fontSize:'0.85rem', border:`2px solid ${kolor}`, color:kolor, padding:'0.3rem 0.5rem' }}/>
+                      <button onClick={zapiszEdycje} style={IB('#e8f5e9','#2e7d32')}><Icon name="Save" size={13} color="#2e7d32"/></button>
+                      <button onClick={anuluj}       style={IB('#f5f5f5','#888')}><Icon name="X"    size={13} color="#888"/></button>
+                    </div>
+                  ) : (
+                    <div style={{ display:'flex', alignItems:'center', gap:'0.4rem', overflow:'visible' }}>
+                      <span style={{ fontSize:'0.78rem', fontWeight:700, color:'#5d4037', minWidth:82, flexShrink:0 }}>{o.miesiac}</span>
+                      <span style={{ background:`${kolor}18`, color:kolor, padding:'0.12rem 0.5rem', borderRadius:'10px', fontSize:'0.78rem', fontWeight:700, whiteSpace:'nowrap' }}>{Math.round(o.stan)} m³</span>
+                      {prev && <span style={{ background:'#fff3e0', color:'#e65100', padding:'0.12rem 0.5rem', borderRadius:'10px', fontSize:'0.78rem', fontWeight:700, whiteSpace:'nowrap' }}>Δ {Math.round(o.zuzycie)} m³</span>}
+                      <div style={{ marginLeft:'auto', flexShrink:0, paddingRight:'0.25rem' }}>
+                        <button onClick={() => startEdit(i)} style={IB('#fff3e0', kolor)} onMouseOver={e=>e.currentTarget.style.transform='translateY(-1px)'} onMouseOut={e=>e.currentTarget.style.transform=''}><Icon name="Edit2" size={13} color={kolor}/></button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // ══════ ROZLICZENIE GAZU ══════
+    const GAZ_KEY = 'gaz-odczyty-all'; // jeden klucz dla wszystkich 3 liczników
+
+    function RozliczenieGazu({ onBack }) {
+      const [daneGaz,   setDaneGaz]   = useState({});
+      const [loaded,    setLoaded]    = useState(false);
+      const [loadError, setLoadError] = useState(null);
+      const [saving,    setSaving]    = useState(false);
+      const [saveError, setSaveError] = useState(null);
+      const [lastSaved, setLastSaved] = useState(null);
+      const daneRef = useRef({});
+      useEffect(() => { daneRef.current = daneGaz; }, [daneGaz]);
+
+      // POPRAWKA: poprzednia wersja przy JAKIMKOLWIEK błędzie odczytu (np. timeout)
+      // automatycznie nadpisywała bazę pustym obiektem (patrz komentarz przy store.get
+      // powyżej) — to był powód znikania miesięcy odczytów. Teraz: sukces → wczytaj dane;
+      // klucz naprawdę nie istnieje (found:false) → zacznij od pustego stanu, ale NIC nie
+      // zapisuj, dopóki użytkownik sam nie doda odczytu; błąd połączenia → pokaż komunikat
+      // i pozwól spróbować ponownie, bez dotykania danych w bazie.
+      const wczytaj = async () => {
+        setLoadError(null);
+        try {
+          const o = await store.get(GAZ_KEY);
+          if (o) {
+            const parsed = JSON.parse(o.value);
+            setDaneGaz(parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {});
+          } else {
+            setDaneGaz({});
+          }
+          setLoaded(true);
+        } catch (e) {
+          console.error('Błąd ładowania danych gazu (dane w bazie NIE zostały naruszone):', e);
+          setLoadError(e.message || 'Nieznany błąd połączenia');
+        }
+      };
+      useEffect(() => { wczytaj(); }, []);
+
+      const saveAll = async d => {
+        setSaving(true);
+        setSaveError(null);
+        try {
+          const src = d ?? daneRef.current;
+          await store.set(GAZ_KEY, JSON.stringify(src));
+          setLastSaved(new Date());
+        } catch(e) { console.error('Błąd zapisu gazu:', e); setSaveError(e.message || 'Nieznany błąd zapisu'); }
+        setSaving(false);
+      };
+
+      useEffect(() => { if (loaded) saveAll(daneGaz); }, [daneGaz]);
+      useEffect(() => {
+        if (!loaded) return;
+        const t = setInterval(() => saveAll(daneRef.current), 60000);
+        return () => clearInterval(t);
+      }, [loaded]);
+
+      return (
+        <div style={{ minHeight:'100vh', background:'linear-gradient(135deg,#1a0a00,#2d1200,#4a1e00)', padding:'2rem' }}>
+          <div style={{ maxWidth:1000, margin:'0 auto' }}>
+            <div style={{ background:'linear-gradient(135deg,#b71c1c,#e53935)', color:'white', padding:'1.5rem 2rem', borderRadius:'16px', marginBottom:'1.5rem', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'1rem' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:'0.875rem' }}>
+                <button onClick={onBack} style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'white', borderRadius:'8px', padding:'0.4rem 0.9rem', cursor:'pointer', display:'flex', alignItems:'center', gap:'0.4rem', fontSize:'0.9rem' }}>
+                  <Icon name="ArrowLeft" size={16}/> Strona główna
+                </button>
+                <div style={{ fontSize:'1.8rem' }}>🔥</div>
+                <div>
+                  <h1 style={{ margin:0, fontSize:'1.5rem', fontWeight:800 }}>Rozliczenie Gazu</h1>
+                  <p style={{ margin:0, opacity:0.85, fontSize:'0.85rem' }}>ul. Chrobrego 3</p>
+                </div>
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
+                {lastSaved && !saving && <div style={{ fontSize:'0.8rem', opacity:0.85 }}>✓ {lastSaved.toLocaleTimeString('pl-PL',{hour:'2-digit',minute:'2-digit'})}</div>}
+                {saving && <div style={{ fontSize:'0.85rem', opacity:0.9 }}>💾 Zapisywanie…</div>}
+                <button onClick={() => saveAll(daneGaz)} disabled={saving || !loaded}
+                  style={{ background:'rgba(255,255,255,0.25)', border:'2px solid rgba(255,255,255,0.6)', color:'white', borderRadius:'10px', padding:'0.4rem 1rem', cursor:(saving||!loaded)?'default':'pointer', display:'flex', alignItems:'center', gap:'0.4rem', fontSize:'0.88rem', fontWeight:700 }}>
+                  <Icon name="Save" size={15}/> Zapisz
+                </button>
+              </div>
+            </div>
+
+            {saveError && (
+              <div style={{ background:'#4a0000', border:'1px solid #ff8a80', color:'#ffcdd2', padding:'0.875rem 1.25rem', borderRadius:'10px', marginBottom:'1.25rem', fontSize:'0.9rem' }}>
+                ⚠️ Nie udało się zapisać: {saveError}. Dane w przeglądarce są bezpieczne — spróbuj ponownie kliknąć "Zapisz".
+              </div>
+            )}
+
+            {loadError ? (
+              <div style={{ textAlign:'center', color:'#ffccbc', padding:'3rem', fontSize:'1rem', background:'rgba(0,0,0,0.2)', borderRadius:'16px' }}>
+                <div style={{ fontSize:'1.1rem', marginBottom:'0.75rem' }}>⚠️ Nie udało się połączyć z bazą danych</div>
+                <div style={{ fontSize:'0.85rem', opacity:0.8, marginBottom:'1.25rem' }}>{loadError}</div>
+                <div style={{ fontSize:'0.8rem', opacity:0.7, marginBottom:'1.25rem' }}>Twoje dane w bazie są bezpieczne — nic nie zostało nadpisane.</div>
+                <button onClick={wczytaj} style={{ background:'rgba(255,255,255,0.2)', border:'1px solid rgba(255,255,255,0.5)', color:'white', borderRadius:'10px', padding:'0.6rem 1.5rem', cursor:'pointer', fontSize:'0.9rem', fontWeight:700 }}>
+                  🔄 Spróbuj ponownie
+                </button>
+              </div>
+            ) : !loaded ? (
+              <div style={{ textAlign:'center', color:'#ffccbc', padding:'3rem', fontSize:'1.1rem' }}>⏳ Ładowanie danych…</div>
+            ) : (
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))', gap:'1.25rem' }}>
+                {MIESZKANIA_GAZ.map(m => (
+                  <KartaLicznika key={m.id} mieszkanie={m}
+                    odczyty={daneGaz[m.id] || []}
+                    setOdczyty={ods => setDaneGaz(prev => ({ ...prev, [m.id]: ods }))}/>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ══════ ARKUSZ WYNAJMU ══════
+    function Arkusz({ nieruchomosc, onBack }) {
+      const { id, nazwa, kolor, kolor2 } = nieruchomosc;
+      const SK = `rental-stawki-${id}`, OK = `rental-odczyty-${id}`;
+      const [stawki,     setStawki]     = useState({ ...DEFAULT_STAWKI });
+      const [odczyty,    setOdczyty]    = useState([]);
+      const [form,       setForm]       = useState({ stanGazu:'', stanWody:'', prad:'', stawkaGazu:'' });
+      const [editMode,   setEditMode]   = useState(false);
+      const [editIndex,  setEditIndex]  = useState(null);
+      const [rozwiniete, setRozwiniete] = useState({});
+      const [loaded,     setLoaded]     = useState(false);
+      const [loadError,  setLoadError]  = useState(null);
+      const [saving,     setSaving]     = useState(false);
+      const [saveError,  setSaveError]  = useState(null);
+      const [lastSaved,  setLastSaved]  = useState(null);
+      const odczytyRef = useRef(odczyty), stawkiRef = useRef(stawki);
+      useEffect(() => { odczytyRef.current = odczyty; }, [odczyty]);
+      useEffect(() => { stawkiRef.current  = stawki;  }, [stawki]);
+
+      // POPRAWKA: tak jak w "Rozliczeniu Gazu" — poprzednia wersja łykała każdy błąd
+      // odczytu pustym `catch {}` i i tak ustawiała loaded=true, co przy błędzie sieci
+      // uruchamiało automatyczny zapis stanu początkowego (pusta tablica odczytów!) i
+      // nadpisywało realne dane. Tutaj: błąd połączenia = NIE ustawiamy loaded, dane
+      // w bazie zostają nietknięte, użytkownik dostaje przycisk "Spróbuj ponownie".
+      const wczytaj = async () => {
+        setLoadError(null);
+        try {
+          const s = await store.get(SK), o = await store.get(OK);
+          if (s) setStawki({ ...DEFAULT_STAWKI, ...JSON.parse(s.value) });
+          if (o) setOdczyty(JSON.parse(o.value));
+          setLoaded(true);
+        } catch (e) {
+          console.error('Błąd ładowania danych wynajmu (dane w bazie NIE zostały naruszone):', e);
+          setLoadError(e.message || 'Nieznany błąd połączenia');
+        }
+      };
+      useEffect(() => { wczytaj(); }, []);
+
+      const saveAll = async (o, s) => {
+        setSaving(true);
+        setSaveError(null);
+        try {
+          await store.set(SK, JSON.stringify(s ?? stawkiRef.current));
+          await store.set(OK, JSON.stringify(o ?? odczytyRef.current));
+          setLastSaved(new Date());
+        } catch (e) { console.error('Błąd zapisu:', e); setSaveError(e.message || 'Nieznany błąd zapisu'); }
+        setSaving(false);
+      };
+
+      useEffect(() => { if (loaded) saveAll(odczyty, stawki); }, [odczyty, stawki]);
+      useEffect(() => {
+        if (!loaded) return;
+        const t = setInterval(() => saveAll(odczytyRef.current, stawkiRef.current), 60000);
+        return () => clearInterval(t);
+      }, [loaded]);
+
+      const dodaj = () => {
+        if (!form.stanGazu || !form.stanWody) { alert('Wypełnij stany liczników'); return; }
+        const stanGazu = parseFloat(form.stanGazu), stanWody = parseFloat(form.stanWody);
+        const prad = form.prad ? parseFloat(form.prad) : 0;
+        const sg   = form.stawkaGazu ? parseFloat(form.stawkaGazu) : stawki.gaz;
+        const prev = odczyty.length ? odczyty[odczyty.length-1] : null;
+        const stEff = id === 'chrobrego' ? { ...stawki, czynsz:0 } : stawki;
+        const obl  = oblicz(stanGazu, stanWody, prad, sg, prev, stEff, id);
+        setOdczyty([...odczyty, { miesiac:getNext(odczyty), stanGazu, stanWody, prad, ...obl, stawkiSnapshot:{ ...stEff, gaz:sg } }]);
+        setForm({ stanGazu:'', stanWody:'', prad:'', stawkaGazu:'' });
+      };
+
+      const usun = i => { if (!window.confirm('Usunąć ten odczyt?')) return; setOdczyty(odczyty.filter((_,j) => j !== i)); };
+
+      const startEdit = i => {
+        const o = odczyty[i];
+        setForm({ stanGazu:String(o.stanGazu), stanWody:String(o.stanWody), prad:String(o.prad), stawkaGazu:String(o.stawkiSnapshot?.gaz ?? stawki.gaz) });
+        setEditMode(true); setEditIndex(i);
+      };
+
+      const zapiszEdycje = () => {
+        const stanGazu = parseFloat(form.stanGazu), stanWody = parseFloat(form.stanWody);
+        const prad = form.prad ? parseFloat(form.prad) : 0;
+        const sg   = form.stawkaGazu ? parseFloat(form.stawkaGazu) : stawki.gaz;
+        const prev = editIndex > 0 ? odczyty[editIndex-1] : null;
+        const stEff = id === 'chrobrego' ? { ...stawki, czynsz:0 } : stawki;
+        const obl  = oblicz(stanGazu, stanWody, prad, sg, prev, stEff, id);
+        const kopia = [...odczyty];
+        kopia[editIndex] = { ...kopia[editIndex], stanGazu, stanWody, prad, ...obl, stawkiSnapshot:{ ...stEff, gaz:sg } };
+        setOdczyty(kopia); anuluj();
+      };
+
+      const anuluj = () => { setEditMode(false); setEditIndex(null); setForm({ stanGazu:'', stanWody:'', prad:'', stawkaGazu:'' }); };
+      const toggle = i => setRozwiniete(p => ({ ...p, [i]: !p[i] }));
+
+      const generujPDF = async (o, i) => {
+        if (!window.jspdf) { alert('jsPDF się jeszcze ładuje'); return; }
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        doc.setFont('helvetica');
+        doc.setFontSize(20); doc.setTextColor(139,69,19); doc.text('ROZLICZENIE WYNAJMU',105,18,{align:'center'});
+        doc.setFontSize(14); doc.setTextColor(100,60,20); doc.text(nazwa,105,27,{align:'center'});
+        doc.setFontSize(16); doc.setTextColor(255,107,53); doc.text(o.miesiac,105,37,{align:'center'});
+        doc.setDrawColor(210,105,30); doc.setLineWidth(0.5); doc.line(20,42,190,42);
+        let y = 52;
+        const sec = (t,r,g,b) => { doc.setFontSize(13); doc.setTextColor(r,g,b); doc.setFont('helvetica','bold'); doc.text(t,20,y); y+=7; doc.setFont('helvetica','normal'); };
+        const ln  = (l,v,gray) => { doc.setFontSize(10); doc.setTextColor(gray?150:80,gray?150:60,gray?150:50); doc.text(l,25,y); if(v) doc.text(v,165,y,{align:'right'}); y+=6; };
+        const tot = (l,v,r,g,b) => { doc.setFontSize(11); doc.setTextColor(r,g,b); doc.setFont('helvetica','bold'); doc.text(l,25,y); doc.text(v,165,y,{align:'right'}); doc.setFont('helvetica','normal'); y+=10; };
+        const prev = i>0 ? odczyty[i-1] : null;
+        sec('GAZ',230,81,0); ln(`Stan poprzedni: ${prev?prev.stanGazu.toFixed(2):'—'} m³`); ln(`Stan aktualny: ${o.stanGazu.toFixed(2)} m³`);
+        ln(`Zużycie: ${o.zuzycieGazu.toFixed(2)} m³ × ${o.stawkiSnapshot.gaz.toFixed(2)} zł = ${o.kosztGazu.toFixed(2)} zł`,'',true);
+        ln(`Abonament: ${o.stawkiSnapshot.abonamentGaz.toFixed(2)} zł`,'',true); tot('Razem GAZ:',`${o.gazZAbonamentem.toFixed(2)} zł`,230,81,0);
+        sec('WODA',21,101,192); ln(`Stan poprzedni: ${prev?prev.stanWody.toFixed(2):'—'} m³`); ln(`Stan aktualny: ${o.stanWody.toFixed(2)} m³`);
+        ln(`Zużycie: ${o.zuzycieWody.toFixed(2)} m³ × ${o.stawkiSnapshot.woda.toFixed(2)} zł = ${o.kosztWody.toFixed(2)} zł`,'',true);
+        if (id==='chrobrego') ln('(woda rozliczana osobno – nie wliczona do sumy)','',true);
+        tot('Razem WODA:',`${o.kosztWody.toFixed(2)} zł`,21,101,192);
+        sec('NIECZYSTOŚCI',74,124,89); ln(`Zużycie wody: ${o.zuzycieWody.toFixed(2)} × ${o.stawkiSnapshot.nieczystosci.toFixed(2)} zł`,'',true);
+        tot('Razem NIECZYSTOŚCI:',`${o.nieczystosci.toFixed(2)} zł`,74,124,89);
+        doc.setDrawColor(210,105,30); doc.line(20,y,190,y); y+=8;
+        sec('KOSZTY STAŁE',139,69,19); ln('Wynajem:',`${o.stawkiSnapshot.wynajem.toFixed(2)} zł`);
+        if (id!=='chrobrego') ln('Czynsz:',`${o.stawkiSnapshot.czynsz.toFixed(2)} zł`);
+        if (o.prad>0) ln('Prąd:',`${o.prad.toFixed(2)} zł`);
+        y+=5; doc.setFillColor(76,175,80); doc.roundedRect(20,y,170,26,3,3,'F');
+        doc.setFontSize(11); doc.setTextColor(255,255,255); doc.text('DO ZAPŁATY',105,y+10,{align:'center'});
+        doc.setFontSize(18); doc.setFont('helvetica','bold'); doc.text(`${o.suma.toFixed(2)} zł`,105,y+21,{align:'center'});
+        doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(150,150,150);
+        doc.text(`Wygenerowano: ${new Date().toLocaleDateString('pl-PL')}`,105,285,{align:'center'});
+        doc.save(`${nazwa} – ${o.miesiac}.pdf`);
+      };
+
+      if (loadError) return (
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100vh', background:'#f5f1e8', flexDirection:'column', gap:'1rem', padding:'2rem', textAlign:'center' }}>
+          <div style={{ fontSize:'2rem' }}>⚠️</div>
+          <div style={{ color:'#8b4513', fontWeight:700, fontSize:'1.1rem' }}>Nie udało się połączyć z bazą danych</div>
+          <div style={{ color:'#a0522d', fontSize:'0.85rem', maxWidth:400 }}>{loadError}</div>
+          <div style={{ color:'#999', fontSize:'0.8rem' }}>Twoje dane w bazie są bezpieczne — nic nie zostało nadpisane.</div>
+          <button onClick={onBack} style={{ background:'#e0e0e0', color:'#5d4037', border:'none', borderRadius:'8px', padding:'0.6rem 1.25rem', cursor:'pointer', fontWeight:600 }}>Strona główna</button>
+          <button onClick={wczytaj} style={{ background:kolor, color:'white', border:'none', borderRadius:'8px', padding:'0.6rem 1.25rem', cursor:'pointer', fontWeight:700 }}>🔄 Spróbuj ponownie</button>
+        </div>
+      );
+      if (!loaded) return (
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100vh', background:'#f5f1e8', flexDirection:'column', gap:'1rem' }}>
+          <div style={{ fontSize:'2rem' }}>⏳</div><div style={{ color:'#8b4513', fontWeight:600 }}>Ładowanie danych…</div>
+        </div>
+      );
+
+      const stawkiItems = [
+        { key:'gaz', label:'Gaz (zł/m³)', iconName:'Flame', iconColor:'#ff6b35' },
+        { key:'woda', label:'Woda (zł/m³)', iconName:'Droplet', iconColor:'#4a90e2' },
+        { key:'nieczystosci', label:'Nieczystości (zł/m³)', iconName:'Droplet', iconColor:'#7c9885' },
+        { key:'abonamentGaz', label:'Abonament gaz (zł)', iconName:'Flame', iconColor:'#d2691e' },
+        { key:'wynajem', label:'Wynajem (zł)', iconName:'Home', iconColor:'#8b4513' },
+      ];
+      if (id !== 'chrobrego') stawkiItems.push({ key:'czynsz', label:'Czynsz (zł)', iconName:'Home', iconColor:'#a0522d' });
+      if (id === 'makuszynskiego') stawkiItems.push({ key:'garaz', label:'Garaż (zł)', iconName:'Home', iconColor:'#546e7a' });
+
+      return (
+        <div style={{ minHeight:'100vh', background:'linear-gradient(135deg,#f5f1e8,#e8dcc8)', padding:'2rem' }}>
+          <div style={{ maxWidth:1100, margin:'0 auto' }}>
+            <div style={{ background:`linear-gradient(135deg,${kolor},${kolor2})`, color:'white', padding:'2rem', borderRadius:'16px 16px 0 0' }}>
+              <button onClick={onBack} style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'white', borderRadius:'8px', padding:'0.4rem 0.9rem', cursor:'pointer', display:'flex', alignItems:'center', gap:'0.4rem', fontSize:'0.9rem', marginBottom:'1rem' }}>
+                <Icon name="ArrowLeft" size={16}/> Strona główna
+              </button>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'1rem' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:'1rem' }}>
+                  <Icon name="Calculator" size={34}/>
+                  <h1 style={{ margin:0, fontSize:'1.9rem', fontWeight:700 }}>Rozliczenie Wynajmu – {nazwa}</h1>
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
+                  {lastSaved && !saving && <div style={{ fontSize:'0.8rem', opacity:0.85 }}>✓ {lastSaved.toLocaleTimeString('pl-PL',{hour:'2-digit',minute:'2-digit'})}</div>}
+                  {saving && <div style={{ fontSize:'0.85rem', opacity:0.9 }}>💾 Zapisywanie…</div>}
+                  <button onClick={() => saveAll(odczyty, stawki)} disabled={saving || !loaded}
+                    style={{ background:'rgba(255,255,255,0.25)', border:'2px solid rgba(255,255,255,0.6)', color:'white', borderRadius:'10px', padding:'0.45rem 1.1rem', cursor:(saving||!loaded)?'default':'pointer', display:'flex', alignItems:'center', gap:'0.4rem', fontSize:'0.9rem', fontWeight:700 }}>
+                    <Icon name="Save" size={16}/> Zapisz
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {saveError && (
+              <div style={{ background:'#fdecea', border:'1px solid #f5c6cb', color:'#c62828', padding:'0.875rem 1.25rem', fontSize:'0.9rem' }}>
+                ⚠️ Nie udało się zapisać: {saveError}. Dane w przeglądarce są bezpieczne — spróbuj ponownie kliknąć "Zapisz".
+              </div>
+            )}
+
+            <div style={{ background:'white', padding:'2rem', borderLeft:`4px solid ${kolor}`, boxShadow:'0 2px 8px rgba(0,0,0,0.07)', marginTop:1 }}>
+              <h2 style={{ margin:'0 0 1.25rem', color:kolor, fontSize:'1.3rem', display:'flex', alignItems:'center', gap:'0.5rem' }}>
+                <Icon name="TrendingUp" size={22}/> Stawki i Koszty Stałe
+              </h2>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:'1rem' }}>
+                {stawkiItems.map(({ key, label, iconName, iconColor }) => (
+                  <div key={key} style={{ background:'#faf8f5', padding:'0.875rem', borderRadius:'8px', border:'1px solid #e8dcc8', display:'flex', flexDirection:'column', alignItems:'center', textAlign:'center' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:'0.4rem', marginBottom:'0.5rem', color:'#5d4037', fontSize:'0.85rem', fontWeight:600 }}>
+                      <Icon name={iconName} size={18} color={iconColor}/> {label}
+                    </div>
+                    <input type="number" step="0.1" value={parseFloat(stawki[key]).toFixed(1)}
+                      onChange={e => setStawki({ ...stawki, [key]: parseFloat(parseFloat(e.target.value).toFixed(1)) || 0 })}
+                      style={{ ...IS, fontSize:'1.05rem', fontWeight:700, border:`2px solid ${kolor}`, color:kolor, textAlign:'center' }}/>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ background:'white', padding:'2rem', borderLeft:'4px solid #ff6b35', boxShadow:'0 2px 8px rgba(0,0,0,0.07)', marginTop:'1rem' }}>
+              <h2 style={{ margin:'0 0 1.25rem', color:'#ff6b35', fontSize:'1.3rem', display:'flex', alignItems:'center', gap:'0.5rem' }}>
+                <Icon name={editMode?'Edit2':'Calculator'} size={22}/> {editMode ? 'Edytuj Odczyt' : 'Dodaj Nowy Odczyt'}
+              </h2>
+              <div style={{ padding:'1rem', marginBottom:'1rem', background:editMode?'linear-gradient(135deg,#4a90e2,#357abd)':`linear-gradient(135deg,${kolor},${kolor2})`, borderRadius:'8px', color:'white', textAlign:'center' }}>
+                <div style={{ fontSize:'0.85rem', opacity:0.9, marginBottom:'0.25rem' }}>{editMode?'Edycja za miesiąc:':'Rozliczenie za miesiąc:'}</div>
+                <div style={{ fontSize:'1.7rem', fontWeight:700 }}>{editMode?odczyty[editIndex]?.miesiac:getNext(odczyty)}</div>
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:'1rem', marginBottom:'1rem' }}>
+                {[
+                  { field:'stanGazu',   label:'Stan licznika gazu (m³)', iconName:'Flame',   iconColor:'#ff6b35', ph:'np. 4834' },
+                  { field:'stanWody',   label:'Stan licznika wody (m³)', iconName:'Droplet', iconColor:'#4a90e2', ph:'np. 374'  },
+                  { field:'prad',       label:'Prąd (zł) – opcjonalnie', iconName:'Zap',     iconColor:'#f0a500', ph:'np. 319'  },
+                  { field:'stawkaGazu', label:'Stawka gazu',             iconName:'Flame',   iconColor:'#d2691e', ph:`${stawki.gaz.toFixed(1)}` }
+                ].map(({ field, label, iconName, iconColor, ph }) => (
+                  <div key={field}>
+                    <label style={{ display:'flex', alignItems:'center', gap:'0.4rem', marginBottom:'0.4rem', color:field==='stawkaGazu'?'#d2691e':'#5d4037', fontWeight:600, fontSize:'0.85rem' }}>
+                      <Icon name={iconName} size={15} color={iconColor}/> {label}
+                    </label>
+                    <input type="number" step="0.01" placeholder={ph} value={form[field]}
+                      onChange={e => setForm({ ...form, [field]: e.target.value })}
+                      style={{ ...IS, ...(field==='stawkaGazu'?{border:'2px solid #d2691e',color:'#d2691e',fontWeight:700}:{}) }}/>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display:'flex', gap:'0.75rem' }}>
+                {editMode ? (
+                  <>
+                    <button onClick={zapiszEdycje} style={{ padding:'0.75rem 1.5rem', background:'linear-gradient(135deg,#4caf50,#45a049)', color:'white', border:'none', borderRadius:'8px', fontSize:'0.95rem', fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:'0.4rem' }}>
+                      <Icon name="Save" size={18}/> Zapisz Zmiany
+                    </button>
+                    <button onClick={anuluj} style={{ padding:'0.75rem 1.5rem', background:'#e0e0e0', color:'#5d4037', border:'none', borderRadius:'8px', fontSize:'0.95rem', fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:'0.4rem' }}>
+                      <Icon name="X" size={18}/> Anuluj
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={dodaj} style={{ padding:'0.75rem 1.5rem', background:`linear-gradient(135deg,${kolor},${kolor2})`, color:'white', border:'none', borderRadius:'8px', fontSize:'0.95rem', fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:'0.4rem' }}>
+                    <Icon name="Calculator" size={18}/> Dodaj Odczyt
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {odczyty.length > 0 && (
+              <div style={{ background:'white', padding:'2rem', borderLeft:`4px solid ${kolor}`, boxShadow:'0 2px 8px rgba(0,0,0,0.07)', marginTop:'1rem', borderRadius:'0 0 16px 0' }}>
+                <h2 style={{ margin:'0 0 1.25rem', color:kolor, fontSize:'1.3rem', display:'flex', alignItems:'center', gap:'0.5rem' }}>
+                  <Icon name="FileText" size={22}/> Historia Rozliczeń
+                </h2>
+                <div style={{ display:'flex', flexDirection:'column', gap:'0.625rem' }}>
+                  {[...odczyty].reverse().map((o, ri) => {
+                    const i = odczyty.length - 1 - ri;
+                    const open = !!rozwiniete[i];
+                    const prevO = i > 0 ? odczyty[i-1] : null;
+                    const sg = o.stawkiSnapshot?.gaz ?? stawki.gaz;
+                    const pozycje = [
+                      { label:'Wynajem', val:`${o.stawkiSnapshot.wynajem.toFixed(2)} zł`, color:'#8b4513', bg:'#fdf3e7', sub:[], iconName:'Home', iconColor:'#8b4513' },
+                      ...(id !== 'chrobrego' ? [{ label:'Czynsz', val:`${o.stawkiSnapshot.czynsz.toFixed(2)} zł`, color:'#a0522d', bg:'#fdf3e7', sub:[], iconName:'Home', iconColor:'#a0522d' }] : []),
+                      { label:'Gaz', val:`${o.gazZAbonamentem.toFixed(2)} zł`, color:'#e65100', bg:'#fff3e0', iconName:'Flame', iconColor:'#e65100',
+                        sub:[{t:`stawka: ${sg.toFixed(2)} zł/m³`,blue:true},{t:`poprzedni: ${prevO?prevO.stanGazu.toFixed(2):'—'} m³`},{t:`aktualny: ${o.stanGazu.toFixed(2)} m³`},{t:`zużycie: ${o.zuzycieGazu.toFixed(2)} m³`,bold:true,red:true}] },
+                      { label:'Woda', val:`${o.kosztWody.toFixed(2)} zł`, color:id==='chrobrego'?'#90a4ae':'#1565c0', bg:id==='chrobrego'?'#eceff1':'#e3f2fd', iconName:'Droplet', iconColor:id==='chrobrego'?'#90a4ae':'#1565c0',
+                        sub:[{t:`stawka: ${o.stawkiSnapshot.woda.toFixed(2)} zł/m³`,blue:true},{t:`poprzedni: ${prevO?prevO.stanWody.toFixed(2):'—'} m³`},{t:`aktualny: ${o.stanWody.toFixed(2)} m³`},{t:`zużycie: ${o.zuzycieWody.toFixed(2)} m³`,bold:true,red:true},...(id==='chrobrego'?[{t:'rozliczana osobno',blue:true}]:[])] },
+                      { label:'Nieczystości', val:`${o.nieczystosci.toFixed(2)} zł`, color:'#4a7c59', bg:'#e8f5e9', iconName:'Trash2', iconColor:'#4a7c59',
+                        sub:[{t:`stawka: ${o.stawkiSnapshot.nieczystosci.toFixed(2)} zł/m³`,blue:true},{t:`zużycie wody: ${o.zuzycieWody.toFixed(2)}`}] },
+                      ...(o.prad>0?[{label:'Prąd',val:`${o.prad.toFixed(2)} zł`,color:'#b8860b',bg:'#fffde7',iconName:'Zap',iconColor:'#b8860b',sub:[]}]:[]),
+                      ...(id==='makuszynskiego'&&o.stawkiSnapshot.garaz>0?[{label:'Garaż',val:`${o.stawkiSnapshot.garaz.toFixed(2)} zł`,color:'#546e7a',bg:'#eceff1',iconName:'Home',iconColor:'#546e7a',sub:[]}]:[]),
+                    ];
+                    return (
+                      <div key={i} style={{ border:'1px solid #e8dcc8', borderRadius:'10px', overflow:'hidden' }}>
+                        <div onClick={()=>toggle(i)} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0.75rem 1.125rem', background:open?'#f5efe6':'#faf8f5', cursor:'pointer', borderBottom:open?'1px solid #e8dcc8':'none' }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
+                            <div style={{ width:26, height:26, borderRadius:'50%', background:'#e8dcc8', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                              <Icon name={open?'ChevronUp':'ChevronDown'} size={14} color={kolor}/>
+                            </div>
+                            <span style={{ fontWeight:700, fontSize:'1rem', color:'#5d4037', minWidth:130 }}>{o.miesiac}</span>
+                            <span style={{ background:'linear-gradient(135deg,#4caf50,#388e3c)', color:'white', padding:'0.25rem 0.875rem', borderRadius:'20px', fontWeight:700, fontSize:'0.95rem' }}>{o.suma.toFixed(2)} zł</span>
+                          </div>
+                          <div style={{ display:'flex', alignItems:'center', gap:'0.375rem' }}>
+                            <button title="PDF"    onClick={e=>{e.stopPropagation();generujPDF(o,i);}} style={IB('#fff3e0','#e65100')} onMouseOver={e=>e.currentTarget.style.transform='translateY(-2px)'} onMouseOut={e=>e.currentTarget.style.transform=''}><Icon name="FileText" size={17} color="#e65100"/></button>
+                            <button title="Edytuj" onClick={e=>{e.stopPropagation();startEdit(i);}}    style={IB('#e3f2fd','#1565c0')} onMouseOver={e=>e.currentTarget.style.transform='translateY(-2px)'} onMouseOut={e=>e.currentTarget.style.transform=''}><Icon name="Edit2"    size={15} color="#1565c0"/></button>
+                            <button title="Usuń"   onClick={e=>{e.stopPropagation();usun(i);}}         style={IB('#fce4ec','#c62828')} onMouseOver={e=>e.currentTarget.style.transform='translateY(-2px)'} onMouseOut={e=>e.currentTarget.style.transform=''}><Icon name="Trash2"   size={15} color="#c62828"/></button>
+                          </div>
+                        </div>
+                        {open && (
+                          <div style={{ padding:'1.125rem 1.25rem', display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:'0.75rem', background:'white' }}>
+                            {pozycje.map(({ label, val, color, bg, sub, iconName, iconColor }) => (
+                              <div key={label} style={{ background:bg, padding:'0.875rem 0.75rem', borderRadius:'8px', display:'flex', flexDirection:'column', alignItems:'center', textAlign:'center' }}>
+                                <Icon name={iconName} size={22} color={iconColor} style={{ marginBottom:'0.35rem' }}/>
+                                <div style={{ fontSize:'0.7rem', color, marginBottom:'0.25rem', textTransform:'uppercase', fontWeight:700, letterSpacing:'0.05em' }}>{label}</div>
+                                <div style={{ fontWeight:700, fontSize:'1.05rem', color }}>{val}</div>
+                                {sub.map((s,si)=>(
+                                  <div key={si} style={{ fontSize:'0.72rem', marginTop:'0.15rem', color:s.red?'#d32f2f':s.blue?'#1565c0':'#999', fontWeight:s.bold?700:400 }}>{s.t}</div>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ══════ PODSUMOWANIE ══════
+    function Podsumowanie({ onBack }) {
+      const [dane, setDane] = useState({});
+      const [loaded, setLoaded] = useState(false);
+      useEffect(() => {
+        (async () => {
+          const wynik = {};
+          for (const n of NIERUCHOMOSCI) {
+            try { const o = await store.get(`rental-odczyty-${n.id}`); wynik[n.id] = o ? JSON.parse(o.value) : []; }
+            catch { wynik[n.id] = []; }
+          }
+          setDane(wynik); setLoaded(true);
+        })();
+      }, []);
+      const ostatni = id => { const od = dane[id]; return od&&od.length ? od[od.length-1] : null; };
+      const suma = NIERUCHOMOSCI.reduce((acc,n) => { const o=ostatni(n.id); return acc+(o?o.suma:0); }, 0);
+      return (
+        <div style={{ minHeight:'100vh', background:'linear-gradient(135deg,#1a1a2e,#16213e,#0f3460)', padding:'2rem' }}>
+          <div style={{ maxWidth:1000, margin:'0 auto' }}>
+            <div style={{ background:'linear-gradient(135deg,#4a1a8a,#6a2fbd)', color:'white', padding:'2rem', borderRadius:'16px 16px 0 0' }}>
+              <button onClick={onBack} style={{ background:'rgba(255,255,255,0.2)', border:'none', color:'white', borderRadius:'8px', padding:'0.4rem 0.9rem', cursor:'pointer', display:'flex', alignItems:'center', gap:'0.4rem', fontSize:'0.9rem', marginBottom:'1rem' }}>
+                <Icon name="ArrowLeft" size={16}/> Strona główna
+              </button>
+              <div style={{ display:'flex', alignItems:'center', gap:'1rem' }}>
+                <Icon name="TrendingUp" size={34}/>
+                <h1 style={{ margin:0, fontSize:'1.9rem', fontWeight:700 }}>Podsumowanie – Wszystkie Nieruchomości</h1>
+              </div>
+            </div>
+            {!loaded ? (
+              <div style={{ background:'white', padding:'3rem', textAlign:'center', color:'#888' }}>⏳ Ładowanie danych…</div>
+            ) : (
+              <>
+                <div style={{ background:'white', padding:'1.5rem 2rem', borderLeft:'4px solid #6a2fbd', marginTop:1, display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'1rem' }}>
+                  <div style={{ color:'#4a1a8a', fontSize:'1.1rem', fontWeight:700, display:'flex', alignItems:'center', gap:'0.5rem' }}><Icon name="Calculator" size={20}/> Łączna kwota do zapłaty</div>
+                  <div style={{ background:'linear-gradient(135deg,#4caf50,#388e3c)', color:'white', padding:'0.5rem 1.5rem', borderRadius:'20px', fontWeight:800, fontSize:'1.4rem' }}>{suma.toFixed(2)} zł</div>
+                </div>
+                <div style={{ background:'white', padding:'2rem', borderLeft:'4px solid #6a2fbd', marginTop:'1rem', borderRadius:'0 0 16px 0' }}>
+                  <h2 style={{ margin:'0 0 1.25rem', color:'#4a1a8a', fontSize:'1.2rem' }}>Ostatnie rozliczenia</h2>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))', gap:'1.25rem' }}>
+                    {NIERUCHOMOSCI.map(n => {
+                      const o = ostatni(n.id); const ods = dane[n.id]||[];
+                      return (
+                        <div key={n.id} style={{ background:`linear-gradient(135deg,${n.kolor}18,${n.kolor}08)`, border:`2px solid ${n.kolor}44`, borderRadius:'14px', padding:'1.5rem' }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:'0.5rem', marginBottom:'0.75rem' }}>
+                            <span style={{ fontSize:'1.4rem' }}>{n.ikona}</span>
+                            <span style={{ fontWeight:800, fontSize:'1.1rem', color:n.kolor }}>{n.nazwa}</span>
+                          </div>
+                          {o ? (
+                            <>
+                              <div style={{ fontSize:'0.82rem', color:'#888', marginBottom:'0.25rem' }}>Ostatnie: <strong>{o.miesiac}</strong></div>
+                              <div style={{ fontSize:'0.82rem', color:'#888', marginBottom:'0.875rem' }}>Miesięcy: <strong>{ods.length}</strong></div>
+                              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.5rem' }}>
+                                {[
+                                  {l:'Wynajem',v:`${o.stawkiSnapshot.wynajem.toFixed(0)} zł`,c:'#8b4513'},
+                                  ...(n.id!=='chrobrego'?[{l:'Czynsz',v:`${o.stawkiSnapshot.czynsz.toFixed(0)} zł`,c:'#a0522d'}]:[]),
+                                  {l:'Gaz',v:`${o.gazZAbonamentem.toFixed(2)} zł`,c:'#e65100'},
+                                  {l:'Woda',v:`${o.kosztWody.toFixed(2)} zł`,c:n.id==='chrobrego'?'#90a4ae':'#1565c0'},
+                                  {l:'Niecz.',v:`${o.nieczystosci.toFixed(2)} zł`,c:'#4a7c59'},
+                                  ...(o.prad>0?[{l:'Prąd',v:`${o.prad.toFixed(2)} zł`,c:'#b8860b'}]:[]),
+                                ].map(({l,v,c}) => (
+                                  <div key={l} style={{ background:'white', borderRadius:'8px', padding:'0.4rem 0.6rem', display:'flex', justifyContent:'space-between' }}>
+                                    <span style={{ fontSize:'0.75rem', color:'#888' }}>{l}</span>
+                                    <span style={{ fontSize:'0.8rem', fontWeight:700, color:c }}>{v}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              <div style={{ marginTop:'0.875rem', background:`linear-gradient(135deg,${n.kolor},${n.kolor2})`, borderRadius:'10px', padding:'0.6rem 1rem', display:'flex', justifyContent:'space-between' }}>
+                                <span style={{ color:'white', fontSize:'0.85rem', fontWeight:600 }}>DO ZAPŁATY</span>
+                                <span style={{ color:'white', fontSize:'1.1rem', fontWeight:800 }}>{o.suma.toFixed(2)} zł</span>
+                              </div>
+                            </>
+                          ) : <div style={{ color:'#aaa', textAlign:'center', padding:'1rem 0' }}>Brak rozliczeń</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ══════ STRONA GŁÓWNA ══════
+    function App() {
+      const [aktywna, setAktywna] = useState(null);
+      const [diagLog, setDiagLog] = useState('');
+      const [diagRunning, setDiagRunning] = useState(false);
+
+      const runDiag = async () => {
+        setDiagRunning(true); setDiagLog('Testuję połączenie…');
+        setDiagLog(await store.test()); setDiagRunning(false);
+      };
+
+      if (aktywna === 'podsumowanie')    return <Podsumowanie    onBack={()=>setAktywna(null)}/>;
+      if (aktywna === 'rozliczenieGazu') return <RozliczenieGazu onBack={()=>setAktywna(null)}/>;
+      if (aktywna) { const n = NIERUCHOMOSCI.find(n=>n.id===aktywna); return <Arkusz nieruchomosc={n} onBack={()=>setAktywna(null)}/>; }
+
+      return (
+        <div style={{ minHeight:'100vh', background:'linear-gradient(135deg,#1a1a2e,#16213e,#0f3460)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'2rem' }}>
+          <div style={{ textAlign:'center', marginBottom:'3rem' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'1rem', marginBottom:'1rem' }}>
+              <Icon name="Building2" size={48} color="#e2b97e"/>
+              <h1 style={{ margin:0, fontSize:'2.5rem', fontWeight:800, color:'white' }}>Zarządzanie Wynajmem</h1>
+            </div>
+            <p style={{ margin:0, color:'#94a3b8', fontSize:'1.1rem' }}>Wybierz nieruchomość lub zakładkę</p>
+          </div>
+
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))', gap:'1.5rem', width:'100%', maxWidth:1200 }}>
+            {NIERUCHOMOSCI.map(n => (
+              <button key={n.id} onClick={()=>setAktywna(n.id)}
+                style={{ background:`linear-gradient(135deg,${n.kolor},${n.kolor2})`, border:'none', borderRadius:'20px', padding:'2.5rem 2rem', cursor:'pointer', color:'white', textAlign:'center', boxShadow:`0 8px 32px ${n.kolor}55`, transition:'transform 0.2s', display:'flex', flexDirection:'column', alignItems:'center', gap:'1rem' }}
+                onMouseOver={e=>e.currentTarget.style.transform='translateY(-6px)'}
+                onMouseOut={e=>e.currentTarget.style.transform='translateY(0)'}>
+                <div style={{ fontSize:'3.5rem' }}>{n.ikona}</div>
+                <div><div style={{ fontSize:'1.6rem', fontWeight:800 }}>{n.nazwa}</div><div style={{ fontSize:'0.95rem', opacity:0.85 }}>{n.adres}</div></div>
+                <div style={{ background:'rgba(255,255,255,0.2)', borderRadius:'10px', padding:'0.5rem 1.25rem', fontSize:'0.9rem', fontWeight:600 }}>Otwórz →</div>
+              </button>
+            ))}
+            <button onClick={()=>setAktywna('rozliczenieGazu')}
+              style={{ background:'linear-gradient(135deg,#b71c1c,#e53935)', border:'none', borderRadius:'20px', padding:'2.5rem 2rem', cursor:'pointer', color:'white', textAlign:'center', boxShadow:'0 8px 32px #b71c1c55', transition:'transform 0.2s', display:'flex', flexDirection:'column', alignItems:'center', gap:'1rem' }}
+              onMouseOver={e=>e.currentTarget.style.transform='translateY(-6px)'}
+              onMouseOut={e=>e.currentTarget.style.transform='translateY(0)'}>
+              <div style={{ fontSize:'3.5rem' }}>🔥</div>
+              <div><div style={{ fontSize:'1.6rem', fontWeight:800 }}>Rozliczenie Gazu</div><div style={{ fontSize:'0.95rem', opacity:0.85 }}>ul. Chrobrego 3</div></div>
+              <div style={{ background:'rgba(255,255,255,0.2)', borderRadius:'10px', padding:'0.5rem 1.25rem', fontSize:'0.9rem', fontWeight:600 }}>Otwórz →</div>
+            </button>
+            <button onClick={()=>setAktywna('podsumowanie')}
+              style={{ background:'linear-gradient(135deg,#4a1a8a,#6a2fbd)', border:'none', borderRadius:'20px', padding:'2.5rem 2rem', cursor:'pointer', color:'white', textAlign:'center', boxShadow:'0 8px 32px #4a1a8a55', transition:'transform 0.2s', display:'flex', flexDirection:'column', alignItems:'center', gap:'1rem' }}
+              onMouseOver={e=>e.currentTarget.style.transform='translateY(-6px)'}
+              onMouseOut={e=>e.currentTarget.style.transform='translateY(0)'}>
+              <div style={{ fontSize:'3.5rem' }}>📊</div>
+              <div><div style={{ fontSize:'1.6rem', fontWeight:800 }}>Podsumowanie</div><div style={{ fontSize:'0.95rem', opacity:0.85 }}>Wszystkie nieruchomości</div></div>
+              <div style={{ background:'rgba(255,255,255,0.2)', borderRadius:'10px', padding:'0.5rem 1.25rem', fontSize:'0.9rem', fontWeight:600 }}>Zobacz →</div>
+            </button>
+          </div>
+
+          <div style={{ marginTop:'2rem', width:'100%', maxWidth:700 }}>
+            <button onClick={runDiag} disabled={diagRunning}
+              style={{ width:'100%', padding:'0.75rem', background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.2)', color:'white', borderRadius:'10px', cursor:'pointer', fontSize:'0.9rem', fontWeight:600, marginBottom:'0.75rem' }}>
+              {diagRunning ? '⏳ Testuję…' : '🔧 Testuj połączenie z bazą danych (Cloudflare)'}
+            </button>
+            {diagLog && (
+              <pre style={{ background:'rgba(0,0,0,0.5)', color:'#a0ffb0', padding:'1rem', borderRadius:'10px', fontSize:'0.8rem', whiteSpace:'pre-wrap', wordBreak:'break-all' }}>{diagLog}</pre>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('root').style.display = 'block';
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>

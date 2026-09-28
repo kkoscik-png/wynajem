@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Narzędzie instalacyjne — Wynajem</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#f5f1e8; margin:0; padding:2rem; color:#3a2a1a; }
+  .card { max-width: 720px; margin: 0 auto; background:white; border-radius:14px; padding:2rem; box-shadow:0 4px 20px rgba(0,0,0,0.08); }
+  h1 { font-size:1.4rem; margin:0 0 0.25rem; color:#8b4513; }
+  p.sub { margin:0 0 1.5rem; color:#888; font-size:0.9rem; }
+  label { display:block; font-weight:600; font-size:0.85rem; margin-bottom:0.3rem; color:#5d4037; }
+  input[type=text], input[type=password] { width:100%; padding:0.6rem 0.75rem; border:2px solid #e8dcc8; border-radius:8px; font-size:0.95rem; margin-bottom:1rem; font-family: Consolas, "Courier New", monospace; }
+  .step { border:1px solid #e8dcc8; border-radius:10px; padding:1.25rem; margin-bottom:1.25rem; }
+  .step h2 { font-size:1.05rem; margin:0 0 0.75rem; color:#5d4037; display:flex; align-items:center; gap:0.5rem; }
+  .step h2 .num { background:#8b4513; color:white; width:24px; height:24px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:0.8rem; }
+  button { background:linear-gradient(135deg,#8b4513,#a0522d); color:white; border:none; border-radius:8px; padding:0.65rem 1.25rem; font-size:0.9rem; font-weight:700; cursor:pointer; }
+  button:disabled { opacity:0.5; cursor:default; }
+  button.secondary { background:#e0e0e0; color:#5d4037; }
+  input[type=file] { margin-bottom:0.75rem; }
+  pre.log { background:#1a1a2e; color:#a0ffb0; padding:1rem; border-radius:8px; font-size:0.8rem; white-space:pre-wrap; word-break:break-all; max-height:260px; overflow:auto; margin-top:0.75rem; }
+  .hint { font-size:0.8rem; color:#999; margin-top:0.4rem; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🛠️ Narzędzie instalacyjne — Zarządzanie Wynajmem</h1>
+  <p class="sub">Jednorazowe kliknięcia zamiast wklejania SQL-a w konsoli D1. Otwórz ten plik bezpośrednio w przeglądarce (dwuklik) i wykonaj kroki po kolei.</p>
+
+  <label>Adres Twojego Workera (API_BASE)</label>
+  <input type="text" id="apiBase" placeholder="https://wynajem-api.twoj-login.workers.dev" />
+
+  <label>Token (API_TOKEN — ten sam, co ustawiłeś w Cloudflare)</label>
+  <input type="password" id="apiToken" placeholder="np. 8f2a1c..." />
+
+  <div class="step">
+    <h2><span class="num">1</span> Utwórz tabele w bazie danych</h2>
+    <button id="btnInit">Utwórz tabele</button>
+    <div class="hint">Bezpieczne — można kliknąć wielokrotnie, nigdy nie kasuje danych.</div>
+  </div>
+
+  <div class="step">
+    <h2><span class="num">2</span> Wgraj dane historyczne (import.json)</h2>
+    <input type="file" id="fileInput" accept="application/json,.json" />
+    <div>
+      <button id="btnImport" disabled>Wgraj wybrany plik</button>
+    </div>
+    <div class="hint">Wskaż plik <code>import.json</code> z paczki (albo nowszy, wygenerowany przez <code>import_from_xlsx.py ... --json</code>). Też bezpieczne — istniejące klucze zostają nadpisane nowszą wartością, nic nie znika.</div>
+  </div>
+
+  <div class="step">
+    <h2><span class="num">3</span> Sprawdź, czy działa</h2>
+    <button id="btnCheck" class="secondary">Sprawdź dane w bazie</button>
+    <div class="hint">Odczytuje klucz <code>rental-odczyty-zdrojowa</code>, żeby potwierdzić, że import się udał.</div>
+  </div>
+
+  <pre class="log" id="log">Log pojawi się tutaj…</pre>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const log = (msg) => { $('log').textContent += '\n' + msg; $('log').scrollTop = $('log').scrollHeight; };
+const clearLog = () => { $('log').textContent = ''; };
+
+function cfg() {
+  const base = $('apiBase').value.trim().replace(/\/+$/, '');
+  const token = $('apiToken').value.trim();
+  if (!base || !token) { alert('Uzupełnij adres Workera i token przed kontynuowaniem.'); return null; }
+  return { base, token };
+}
+
+$('btnInit').addEventListener('click', async () => {
+  const c = cfg(); if (!c) return;
+  clearLog();
+  log('→ Wywołuję ' + c.base + '/api/admin/init ...');
+  try {
+    const res = await fetch(c.base + '/api/admin/init', { headers: { 'X-Api-Key': c.token } });
+    const data = await res.json();
+    if (!res.ok) { log('❌ Błąd (HTTP ' + res.status + '): ' + (data.error || JSON.stringify(data))); return; }
+    log('✅ ' + (data.message || 'OK'));
+  } catch (e) {
+    log('❌ Nie udało się połączyć: ' + e.message + ' (sprawdź adres Workera i czy jest wdrożony)');
+  }
+});
+
+let pendingRows = null;
+$('fileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) { pendingRows = null; $('btnImport').disabled = true; return; }
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    if (!parsed || !Array.isArray(parsed.rows)) throw new Error('Plik musi mieć postać {"rows":[{"key":"...","value":"..."}, ...]}');
+    pendingRows = parsed.rows;
+    $('btnImport').disabled = false;
+    clearLog();
+    log('Wczytano plik: ' + file.name + ' (' + pendingRows.length + ' wierszy). Kliknij "Wgraj wybrany plik".');
+  } catch (err) {
+    pendingRows = null;
+    $('btnImport').disabled = true;
+    clearLog();
+    log('❌ Nie udało się odczytać pliku: ' + err.message);
+  }
+});
+
+$('btnImport').addEventListener('click', async () => {
+  const c = cfg(); if (!c) return;
+  if (!pendingRows) { alert('Najpierw wybierz plik import.json.'); return; }
+  log('→ Wysyłam ' + pendingRows.length + ' wierszy do ' + c.base + '/api/admin/import ...');
+  try {
+    const res = await fetch(c.base + '/api/admin/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': c.token },
+      body: JSON.stringify({ rows: pendingRows })
+    });
+    const data = await res.json();
+    if (!res.ok) { log('❌ Błąd (HTTP ' + res.status + '): ' + (data.error || JSON.stringify(data))); return; }
+    log('✅ Zaimportowano: ' + data.imported + ', pominięto: ' + data.skipped);
+  } catch (e) {
+    log('❌ Nie udało się połączyć: ' + e.message);
+  }
+});
+
+$('btnCheck').addEventListener('click', async () => {
+  const c = cfg(); if (!c) return;
+  clearLog();
+  log('→ Sprawdzam dane w bazie...');
+  try {
+    const res = await fetch(c.base + '/api/kv?key=' + encodeURIComponent('rental-odczyty-zdrojowa'), {
+      headers: { 'X-Api-Key': c.token }
+    });
+    const data = await res.json();
+    if (!res.ok) { log('❌ Błąd (HTTP ' + res.status + '): ' + (data.error || JSON.stringify(data))); return; }
+    if (!data.found) { log('⚠️ Klucz "rental-odczyty-zdrojowa" nie istnieje jeszcze w bazie — wykonaj najpierw kroki 1 i 2.'); return; }
+    const parsed = JSON.parse(data.value);
+    log('✅ Znaleziono ' + parsed.length + ' wpis(ów) dla "Zdrojowa". Wszystko działa poprawnie!');
+  } catch (e) {
+    log('❌ Nie udało się połączyć: ' + e.message);
+  }
+});
+</script>
+</body>
+</html>

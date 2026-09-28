@@ -1,0 +1,16 @@
+{
+  "rows": [
+    {
+      "key": "_diag_",
+      "value": "test_1773083661368"
+    },
+    {
+      "key": "rental-stawki-zdrojowa",
+      "value": "{\"gaz\":4.6,\"woda\":21,\"nieczystosci\":12,\"wynajem\":2000,\"czynsz\":473,\"abonamentGaz\":21}"
+    },
+    {
+      "key": "rental-odczyty-zdrojowa",
+      "value": "[{\"miesiac\":\"Styczeń 2026\",\"stanGazu\":4834,\"stanWody\":374,\"prad\":0,\"zuzycieGazu\":0,\"zuzycieWody\":0,\"kosztGazu\":0,\"kosztWody\":0,\"nieczystosci\":0,\"gazZAbonamentem\":21,\"suma\":2494,\"stawkiSnapshot\":{\"gaz\":5,\"woda\":21,\"nieczystosci\":12,\"wynajem\":2000,\"czynsz\":473,\"abonamentGaz\":21}},{\"miesiac\":\"Luty 2026\",\"stanGazu\":5077,\"stanWody\":382,\"prad\":319,\"zuzycieGazu\":243,\"zuzycieWody\":8,\"kosztGazu\":1117.8,\"kosztWody\":168,\"nieczystosci\":96,\"gazZAbonamentem\":1138.8,\"suma\":4194.8,\"stawkiSnapshot\":{\"gaz\":4.6,\"woda\":21,\"nieczystosci\":12,\"wynajem\":2000,\"czynsz\":473,\"abonamentGaz\":21}}]"
+    }
+  ]
+}
