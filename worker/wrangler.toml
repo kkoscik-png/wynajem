@@ -1,18 +1,11 @@
-name = "wynajem-api"
+name = "wynajem"
 main = "src/index.js"
 compatibility_date = "2024-09-23"
 
-# Po utworzeniu bazy komendą `wrangler d1 create wynajem-db`
-# wklej tutaj zwrócony "database_id".
 [[d1_databases]]
 binding = "DB"
 database_name = "wynajem-db"
-database_id = "WKLEJ_TUTAJ_DATABASE_ID"
+database_id = "4eb9cfb1-df92-4482-b7bb-6c9e70ebae9a"
 
 [vars]
-# Adres Twojej strony na Cloudflare Pages (bez ukośnika na końcu).
-# Ustaw "*" tymczasowo na czas testów, jeśli jeszcze nie znasz adresu Pages.
-ALLOWED_ORIGIN = "https://wynajem.pages.dev"
-
-# API_TOKEN NIE jest tu ustawiany (nie trafia do repo/plików) —
-# ustaw go sekretem: `wrangler secret put API_TOKEN`
+ALLOWED_ORIGIN = "*"
