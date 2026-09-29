@@ -5,16 +5,16 @@ Aplikacja rozlicza trzy nieruchomości oraz liczniki gazu w trzech lokalach. `fr
 ## Przed wdrożeniem tej wersji
 
 1. Zrób kopię istniejącej bazy **wynajem-db**. W Cloudflare D1 można użyć Time Travel, a przez Wrangler wyeksportować SQL: `npx wrangler d1 export wynajem-db --remote --output=wynajem-backup.sql`. Przechowuj kopię prywatnie, poza publicznym repozytorium.
-2. W repozytorium opublikowano wcześniej `API_TOKEN` we frontendzie. Usuń/obróć ten sekret w ustawieniach Workera. Samo usunięcie z najnowszego pliku nie usuwa go z historii Git. Ustaw też drugi, **inny** sekret `ADMIN_TOKEN` dla importu.
+2. W repozytorium opublikowano wcześniej `API_TOKEN` we frontendzie. Samo usunięcie go z najnowszego pliku nie usuwa go z historii Git. **Przed wdrożeniem dodaj osobny** sekret `ADMIN_TOKEN` dla importu; `API_TOKEN` wymień **po wdrożeniu obu części**, żeby stary frontend nie stracił dostępu przed aktualizacją.
 3. Repozytorium jest publiczne i zawiera dawne pliki importu oraz archiwum. Ustaw je jako prywatne na GitHubie, jeśli ma pozostać repozytorium z danymi rozliczeń. Dodatkowo ogranicz dostęp do strony przez Cloudflare Access, jeśli ma być widoczna tylko dla Ciebie.
 
 ## Konfiguracja Cloudflare
 
 - Worker: połączony z `kkoscik-png/wynajem`, katalog główny `worker`, nazwa `wynajem` zgodna z `worker/wrangler.toml`. Zweryfikuj, że binding D1 `DB` wskazuje na istniejącą bazę `wynajem-db` o ID z pliku TOML. **Nie twórz nowej pustej bazy.**
-- Worker → Settings → Variables and Secrets: `API_TOKEN` (nowy, długi sekret), `ADMIN_TOKEN` (osobny sekret). Żadnego z nich nie zapisuj w GitHubie ani w `wrangler.toml`.
+- Worker → Settings → Variables and Secrets: istniejący `API_TOKEN` pozostaw na czas wdrożenia, dodaj osobny `ADMIN_TOKEN`. Po wdrożeniu Workera i Pages wymień `API_TOKEN` na nowy, długi sekret. Żadnego z nich nie zapisuj w GitHubie ani w `wrangler.toml`.
 - Pages: połączone z tym samym repozytorium, katalog główny `frontend`, bez komendy budowania, katalog wynikowy `.`. Zweryfikuj adres strony w panelu projektu. `frontend/index.html` wskazuje na `https://wynajem.scandica.workers.dev`; jeśli Twój adres Workera jest inny, popraw `API_BASE` w pliku.
 - `ALLOWED_ORIGIN` w `worker/wrangler.toml` jest na razie `*`. Po ustaleniu dokładnego adresu Pages lub własnej domeny wpisz tam **pełny origin strony** (np. `https://wynajem.pages.dev`, bez końcowego `/`) i wdroż Workera ponownie. Jeśli używasz dwóch adresów frontendu, trzeba jawnie obsłużyć oba; CORS nie zastępuje uwierzytelnienia.
-- Sprawdź, czy oba projekty wdrażają gałąź `main`. Nowy frontend wymaga Workera z trasą `/api/health` i zapisem `expectedValue`, więc przy ręcznym wdrożeniu wdrażaj Workera przed Pages.
+- Sprawdź, czy oba projekty wdrażają gałąź `main`. Nowy frontend wymaga Workera z trasą `/api/health` i zapisem `expectedValue`. Przy ręcznym wdrożeniu wdrażaj Workera przed Pages; przez czas między wdrożeniami zapisy ze starego frontendu mogą zwracać błąd. Po wdrożeniu obu części i kontroli odczytu wymień `API_TOKEN`.
 
 Po wdrożeniu otwórz Pages, wpisz **nowy** `API_TOKEN` na ekranie wejścia i sprawdź odczyt, edycję i PDF. Token jest przechowywany w `sessionStorage` tylko do zamknięcia karty. Przy udostępnieniu tej samej karty innym osobom kliknij „Wyloguj”.
 
