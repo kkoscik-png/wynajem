@@ -5,28 +5,25 @@
  * Endpointy:
  *   GET  /api/kv?key=...          -> { found: true, value: "..." } | { found: false }
  *   POST /api/kv  {key,value}     -> { ok: true }
+ *   GET  /api/health              -> { ok: true }
  *   GET  /api/export              -> { rows: [{key, value, updated_at}, ...] }  (kopia zapasowa)
- *   GET  /api/admin/init          -> tworzy tabele w D1, jeśli jeszcze nie istnieją (bezpieczne, można wywołać wielokrotnie)
+ *   POST /api/admin/init          -> tworzy tabele w D1, jeśli jeszcze nie istnieją
  *   POST /api/admin/import {rows:[{key,value},...]} -> zbiorczy import/aktualizacja wielu kluczy naraz
  *
  * Endpointy /api/admin/* istnieją po to, żeby NIE trzeba było ręcznie wklejać
  * SQL-a w konsoli D1 w panelu Cloudflare (co bywa zawodne przy kopiowaniu/wklejaniu) —
  * wystarczy otworzyć narzedzie-instalacyjne.html z paczki i kliknąć przyciski.
  *
- * Autoryzacja: nagłówek "X-Api-Key" (lub ?token=... w URL) musi być równy
+ * Autoryzacja: nagłówek "X-Api-Key" musi być równy
  * sekretowi API_TOKEN ustawionemu przez `wrangler secret put API_TOKEN`
  * (albo wpisany w panelu Cloudflare: Settings → Variables and Secrets).
  *
- * Uwaga o bezpieczeństwie: to jest prosta, "wystarczająca" ochrona dla
- * prywatnej aplikacji jednoosobowej — token jest w kodzie źródłowym strony
- * (widoczny w "Pokaż źródło"), więc chroni przed przypadkowym/nieautoryzowanym
- * dostępem, ale NIE jest to poziom bezpieczeństwa banku. Jeśli chcesz mocniejszej
- * ochrony, rozważ Cloudflare Access przed Workerem.
+ * Trasy administracyjne wymagają osobnego ADMIN_TOKEN.
  */
 
 function corsHeaders(env) {
   return {
-    'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*',
+    'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || 'null',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, X-Api-Key',
     'Access-Control-Max-Age': '86400',
@@ -36,7 +33,7 @@ function corsHeaders(env) {
 function json(data, status, env) {
   return new Response(JSON.stringify(data), {
     status: status || 200,
-    headers: { 'Content-Type': 'application/json; charset=utf-8', ...corsHeaders(env) },
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...corsHeaders(env) },
   });
 }
 
@@ -45,7 +42,7 @@ export default {
     const url = new URL(request.url);
 
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders(env) });
+      return new Response(null, { status: 204, headers: corsHeaders(env) });
     }
 
     if (!env.DB) {
@@ -56,12 +53,17 @@ export default {
     }
 
     // --- autoryzacja ---
-    const supplied = request.headers.get('X-Api-Key') || url.searchParams.get('token');
-    if (supplied !== env.API_TOKEN) {
+    const supplied = request.headers.get('X-Api-Key');
+    const isAdmin = url.pathname.startsWith('/api/admin/');
+    if (!supplied || (isAdmin ? (!env.ADMIN_TOKEN || supplied !== env.ADMIN_TOKEN) : supplied !== env.API_TOKEN)) {
       return json({ error: 'unauthorized' }, 401, env);
     }
 
     try {
+      if (url.pathname === '/api/health' && request.method === 'GET') {
+        return json({ ok: true }, 200, env);
+      }
+
       if (url.pathname === '/api/kv' && request.method === 'GET') {
         const key = url.searchParams.get('key');
         if (!key) return json({ error: 'Brak parametru "key"' }, 400, env);
@@ -73,19 +75,26 @@ export default {
       if (url.pathname === '/api/kv' && request.method === 'POST') {
         let body;
         try { body = await request.json(); } catch { body = null; }
-        if (!body || typeof body.key !== 'string' || typeof body.value !== 'string' || !body.key) {
-          return json({ error: 'Body musi być JSON-em postaci {"key": "...", "value": "..."}' }, 400, env);
+        if (!body || typeof body.key !== 'string' || typeof body.value !== 'string' || !body.key ||
+            !Object.hasOwn(body, 'expectedValue') ||
+            (body.expectedValue !== null && typeof body.expectedValue !== 'string')) {
+          return json({ error: 'Wymagane: key, value i expectedValue (poprzednia wartość albo null)' }, 400, env);
         }
-
-        await env.DB.batch([
-          env.DB.prepare(
-            `INSERT INTO kv_store (key, value, updated_at) VALUES (?1, ?2, datetime('now'))
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
-          ).bind(body.key, body.value),
-          env.DB.prepare(
+        const stmt = body.expectedValue === null
+          ? env.DB.prepare(`INSERT INTO kv_store (key, value, updated_at)
+              VALUES (?1, ?2, datetime('now')) ON CONFLICT(key) DO NOTHING`).bind(body.key, body.value)
+          : env.DB.prepare(`UPDATE kv_store SET value = ?2, updated_at = datetime('now')
+              WHERE key = ?1 AND value = ?3`).bind(body.key, body.value, body.expectedValue);
+        const result = await stmt.run();
+        if (!result.meta?.changes) return json({ error: 'conflict' }, 409, env);
+        try {
+          await env.DB.prepare(
             `INSERT INTO kv_store_history (key, value, written_at) VALUES (?1, ?2, datetime('now'))`
-          ).bind(body.key, body.value),
-        ]);
+          ).bind(body.key, body.value).run();
+        } catch (historyError) {
+          // Zapis główny już się powiódł; błąd historii nie może skłonić klienta do ponowienia zapisu.
+          console.error('Nie udało się dopisać historii:', historyError);
+        }
 
         return json({ ok: true }, 200, env);
       }
@@ -97,7 +106,7 @@ export default {
 
       // ── /api/admin/init: tworzy tabele, jeśli jeszcze nie istnieją ──
       // Bezpieczne do wielokrotnego wywołania (IF NOT EXISTS) — nigdy nie kasuje danych.
-      if (url.pathname === '/api/admin/init' && request.method === 'GET') {
+      if (url.pathname === '/api/admin/init' && request.method === 'POST') {
         await env.DB.batch([
           env.DB.prepare(
             `CREATE TABLE IF NOT EXISTS kv_store (
@@ -125,7 +134,7 @@ export default {
       if (url.pathname === '/api/admin/import' && request.method === 'POST') {
         let body;
         try { body = await request.json(); } catch { body = null; }
-        if (!body || !Array.isArray(body.rows)) {
+        if (!body || !Array.isArray(body.rows) || body.rows.length > 1000) {
           return json({ error: 'Body musi być JSON-em postaci {"rows": [{"key":"...","value":"..."}, ...]}' }, 400, env);
         }
         const stmts = [];
@@ -145,7 +154,8 @@ export default {
 
       return json({ error: 'not found' }, 404, env);
     } catch (e) {
-      return json({ error: 'Błąd serwera: ' + (e && e.message ? e.message : String(e)) }, 500, env);
+      console.error('Błąd API:', e);
+      return json({ error: 'Błąd serwera. Spróbuj ponownie.' }, 500, env);
     }
   },
 };
