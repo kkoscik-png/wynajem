@@ -498,15 +498,28 @@
         if (!window.jspdf) { alert('jsPDF się jeszcze ładuje'); return; }
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
-        doc.setFont('helvetica');
+        try {
+          for (const [file, style] of [['WynajemSans-Regular.ttf','normal'], ['WynajemSans-Bold.ttf','bold']]) {
+            const response = await fetch(`./fonts/${file}`);
+            if (!response.ok) throw new Error('Nie udało się wczytać czcionki PDF');
+            const bytes = new Uint8Array(await response.arrayBuffer());
+            let binary = '';
+            for (let offset = 0; offset < bytes.length; offset += 8192) {
+              binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+            }
+            doc.addFileToVFS(file, btoa(binary));
+            doc.addFont(file, 'WynajemSans', style);
+          }
+        } catch (error) { alert(error.message || 'Nie udało się przygotować PDF'); return; }
+        doc.setFont('WynajemSans', 'normal');
         doc.setFontSize(20); doc.setTextColor(139,69,19); doc.text('ROZLICZENIE WYNAJMU',105,18,{align:'center'});
         doc.setFontSize(14); doc.setTextColor(100,60,20); doc.text(nazwa,105,27,{align:'center'});
         doc.setFontSize(16); doc.setTextColor(255,107,53); doc.text(o.miesiac,105,37,{align:'center'});
         doc.setDrawColor(210,105,30); doc.setLineWidth(0.5); doc.line(20,42,190,42);
         let y = 52;
-        const sec = (t,r,g,b) => { doc.setFontSize(13); doc.setTextColor(r,g,b); doc.setFont('helvetica','bold'); doc.text(t,20,y); y+=7; doc.setFont('helvetica','normal'); };
+        const sec = (t,r,g,b) => { doc.setFontSize(13); doc.setTextColor(r,g,b); doc.setFont('WynajemSans','bold'); doc.text(t,20,y); y+=7; doc.setFont('WynajemSans','normal'); };
         const ln  = (l,v,gray) => { doc.setFontSize(10); doc.setTextColor(gray?150:80,gray?150:60,gray?150:50); doc.text(l,25,y); if(v) doc.text(v,165,y,{align:'right'}); y+=6; };
-        const tot = (l,v,r,g,b) => { doc.setFontSize(11); doc.setTextColor(r,g,b); doc.setFont('helvetica','bold'); doc.text(l,25,y); doc.text(v,165,y,{align:'right'}); doc.setFont('helvetica','normal'); y+=10; };
+        const tot = (l,v,r,g,b) => { doc.setFontSize(11); doc.setTextColor(r,g,b); doc.setFont('WynajemSans','bold'); doc.text(l,25,y); doc.text(v,165,y,{align:'right'}); doc.setFont('WynajemSans','normal'); y+=10; };
         const prev = i>0 ? odczyty[i-1] : null;
         sec('GAZ',230,81,0); ln(`Stan poprzedni: ${prev?prev.stanGazu.toFixed(2):'—'} m³`); ln(`Stan aktualny: ${o.stanGazu.toFixed(2)} m³`);
         ln(`Zużycie: ${o.zuzycieGazu.toFixed(2)} m³ × ${o.stawkiSnapshot.gaz.toFixed(2)} zł = ${o.kosztGazu.toFixed(2)} zł`,'',true);
@@ -523,8 +536,8 @@
         if (o.prad>0) ln('Prąd:',`${o.prad.toFixed(2)} zł`);
         y+=5; doc.setFillColor(76,175,80); doc.roundedRect(20,y,170,26,3,3,'F');
         doc.setFontSize(11); doc.setTextColor(255,255,255); doc.text('DO ZAPŁATY',105,y+10,{align:'center'});
-        doc.setFontSize(18); doc.setFont('helvetica','bold'); doc.text(`${o.suma.toFixed(2)} zł`,105,y+21,{align:'center'});
-        doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(150,150,150);
+        doc.setFontSize(18); doc.setFont('WynajemSans','bold'); doc.text(`${o.suma.toFixed(2)} zł`,105,y+21,{align:'center'});
+        doc.setFontSize(8); doc.setFont('WynajemSans','normal'); doc.setTextColor(150,150,150);
         doc.text(`Wygenerowano: ${new Date().toLocaleDateString('pl-PL')}`,105,285,{align:'center'});
         doc.save(`${nazwa} – ${o.miesiac}.pdf`);
       };
