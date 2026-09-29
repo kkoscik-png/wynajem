@@ -26,13 +26,15 @@
 <body>
 <div class="card">
   <h1>🛠️ Narzędzie instalacyjne — Zarządzanie Wynajmem</h1>
-  <p class="sub">Jednorazowe kliknięcia zamiast wklejania SQL-a w konsoli D1. Otwórz ten plik bezpośrednio w przeglądarce (dwuklik) i wykonaj kroki po kolei.</p>
+  <p class="sub">Jednorazowe kliknięcia zamiast wklejania SQL-a w konsoli D1. Otwórz stronę /admin.html na tej samej domenie co aplikacja i wykonaj kroki po kolei.</p>
 
   <label>Adres Twojego Workera (API_BASE)</label>
-  <input type="text" id="apiBase" placeholder="https://wynajem-api.twoj-login.workers.dev" />
+  <input type="text" id="apiBase" value="https://wynajem.scandica.workers.dev" placeholder="https://wynajem-api.twoj-login.workers.dev" />
 
-  <label>Token (API_TOKEN — ten sam, co ustawiłeś w Cloudflare)</label>
-  <input type="password" id="apiToken" placeholder="np. 8f2a1c..." />
+  <label>Token administratora (ADMIN_TOKEN z Cloudflare)</label>
+  <input type="password" id="apiToken" placeholder="Klucz do importu" />
+  <label>Token aplikacji (API_TOKEN, tylko do sprawdzenia danych)</label>
+  <input type="password" id="userToken" placeholder="Klucz do rozliczeń" />
 
   <div class="step">
     <h2><span class="num">1</span> Utwórz tabele w bazie danych</h2>
@@ -46,7 +48,7 @@
     <div>
       <button id="btnImport" disabled>Wgraj wybrany plik</button>
     </div>
-    <div class="hint">Wskaż plik <code>import.json</code> z paczki (albo nowszy, wygenerowany przez <code>import_from_xlsx.py ... --json</code>). Też bezpieczne — istniejące klucze zostają nadpisane nowszą wartością, nic nie znika.</div>
+    <div class="hint">Wskaż plik JSON z kopią danych. Import nadpisuje wskazane klucze, więc przed wykonaniem zachowaj eksport aktualnej bazy.</div>
   </div>
 
   <div class="step">
@@ -75,7 +77,7 @@ $('btnInit').addEventListener('click', async () => {
   clearLog();
   log('→ Wywołuję ' + c.base + '/api/admin/init ...');
   try {
-    const res = await fetch(c.base + '/api/admin/init', { headers: { 'X-Api-Key': c.token } });
+    const res = await fetch(c.base + '/api/admin/init', { method:'POST', headers: { 'X-Api-Key': c.token } });
     const data = await res.json();
     if (!res.ok) { log('❌ Błąd (HTTP ' + res.status + '): ' + (data.error || JSON.stringify(data))); return; }
     log('✅ ' + (data.message || 'OK'));
@@ -124,11 +126,12 @@ $('btnImport').addEventListener('click', async () => {
 
 $('btnCheck').addEventListener('click', async () => {
   const c = cfg(); if (!c) return;
+  if (!$('userToken').value.trim()) { alert('Wpisz token aplikacji do sprawdzenia danych.'); return; }
   clearLog();
   log('→ Sprawdzam dane w bazie...');
   try {
     const res = await fetch(c.base + '/api/kv?key=' + encodeURIComponent('rental-odczyty-zdrojowa'), {
-      headers: { 'X-Api-Key': c.token }
+      headers: { 'X-Api-Key': $('userToken').value.trim() }
     });
     const data = await res.json();
     if (!res.ok) { log('❌ Błąd (HTTP ' + res.status + '): ' + (data.error || JSON.stringify(data))); return; }

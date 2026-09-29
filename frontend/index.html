@@ -10,7 +10,15 @@
   <meta name="apple-mobile-web-app-title" content="Wynajem"/>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    body { font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#1f2937; }
+    button, input { font:inherit; }
+    button:focus-visible, input:focus-visible { outline:3px solid #e2b97e; outline-offset:3px; }
+    button:disabled { opacity:.6; cursor:not-allowed !important; }
+    @media (max-width:600px) {
+      #root > div { padding:1rem !important; }
+      #root h1 { font-size:clamp(1.45rem, 7vw, 2rem) !important; }
+      #root h2 { font-size:1.15rem !important; }
+    }
     #root { min-height:100vh; }
     #loading { display:flex; align-items:center; justify-content:center; min-height:100vh; background:#1a1a2e; color:white; font-size:1.2rem; }
   </style>
@@ -57,13 +65,13 @@
 
     const MIESIACE = ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'];
 
-    // ══════ KONFIGURACJA BACKENDU (Cloudflare Worker + D1) ══════
-    // Po wdrożeniu Workera (patrz DEPLOYMENT_GUIDE.md) uzupełnij poniższe dwie wartości:
-    //  - API_BASE: adres Twojego Workera, np. https://wynajem-api.twoj-login.workers.dev
-    //  - API_TOKEN: dokładnie ten sam token, który ustawiłeś przez `wrangler secret put API_TOKEN`
-    const APP_CONFIG = {
-      API_BASE: 'https://wynajem.scandica.workers.dev',
-      API_TOKEN: 'A0G4SIif8A4j5d2eLtwn1HUcRFQ9yFEU',
+    // Adres API jest publiczną konfiguracją. Sekret jest podawany przez użytkownika
+    // i przechowywany tylko do zamknięcia karty; nigdy w kodzie ani w adresie URL.
+    const APP_CONFIG = { API_BASE: 'https://wynajem.scandica.workers.dev' };
+    const auth = {
+      getToken: () => sessionStorage.getItem('wynajem-api-token') || '',
+      setToken: token => sessionStorage.setItem('wynajem-api-token', token),
+      clear: () => sessionStorage.removeItem('wynajem-api-token'),
     };
 
     const NIERUCHOMOSCI = [
@@ -81,51 +89,52 @@
     const IS = { width:'100%', padding:'0.75rem', fontSize:'1rem', fontFamily:'Consolas,"Courier New",monospace', border:'2px solid #e8dcc8', borderRadius:'6px', outline:'none', boxSizing:'border-box', background:'white' };
     const IB = (bg, col) => ({ width:32, height:32, border:'none', borderRadius:'7px', background:bg, color:col, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 1px 4px rgba(0,0,0,0.1)', transition:'transform 0.15s', flexShrink:0 });
 
-    // ══════ WARSTWA ZAPISU: Cloudflare Worker + D1 ══════
-    // WAŻNE (poprawka błędu z znikającymi rozliczeniami gazu):
-    // Poprzednia wersja store.get() ZAWSZE łapała błędy sieci/timeoutu i zwracała `null`,
-    // dokładnie tak samo jak dla klucza, który po prostu nie istnieje. Kod wyżej (ekran
-    // "Rozliczenie Gazu") traktował `null` jako "nigdy nie było danych" i sam, automatycznie,
-    // NADPISYWAŁ bazę pustym obiektem — dlatego całe miesiące odczytów potrafiły zniknąć
-    // przy zwykłym błędzie sieci/timeoutu Google Apps Script.
-    //
-    // Poniżej store.get() RZUCA wyjątkiem przy błędzie połączenia/HTTP, a zwraca `null`
-    // TYLKO wtedy, gdy serwer wprost powiedział "found:false". Dzięki temu żaden ekran nie
-    // może już pomylić "chwilowego braku połączenia" z "tu nigdy nie było danych".
+    // Każdy zapis zawiera ostatnio odczytaną wartość. Serwer odrzuca zapis, jeśli
+    // inna karta zmieniła ten klucz. Kolejka chroni kolejność szybkich lokalnych zmian.
+    const lastRead = new Map(), pending = new Map();
+    const apiHeaders = () => ({ 'X-Api-Key': auth.getToken() });
     const store = {
+      async health() {
+        const res = await fetch(`${APP_CONFIG.API_BASE}/api/health`, { headers: apiHeaders() });
+        if (!res.ok) throw new Error(res.status === 401 ? 'Nieprawidłowy token' : `HTTP ${res.status}`);
+      },
       async get(key) {
         const res = await fetch(`${APP_CONFIG.API_BASE}/api/kv?key=${encodeURIComponent(key)}`, {
-          headers: { 'X-Api-Key': APP_CONFIG.API_TOKEN }
+          headers: apiHeaders()
         });
         if (!res.ok) throw new Error(`Błąd serwera (HTTP ${res.status}) przy odczycie "${key}"`);
         const d = await res.json();
+        lastRead.set(key, d.found ? d.value : null);
         return d && d.found ? { value: d.value } : null;
       },
       async set(key, value) {
-        const res = await fetch(`${APP_CONFIG.API_BASE}/api/kv`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Api-Key': APP_CONFIG.API_TOKEN },
-          body: JSON.stringify({ key, value })
+        const previous = pending.get(key) || Promise.resolve();
+        const write = previous.catch(() => {}).then(async () => {
+          if (!lastRead.has(key)) throw new Error('Najpierw wczytaj dane przed zapisem');
+          if (lastRead.get(key) === value) return true;
+          const res = await fetch(`${APP_CONFIG.API_BASE}/api/kv`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...apiHeaders() },
+            body: JSON.stringify({ key, value, expectedValue: lastRead.get(key) })
+          });
+          if (res.status === 409) throw new Error('Dane zmieniono w innej karcie. Skopiuj swoje zmiany przed odświeżeniem strony.');
+          if (!res.ok) throw new Error(`Błąd serwera (HTTP ${res.status}) przy zapisie "${key}"`);
+          lastRead.set(key, value);
+          return true;
         });
-        if (!res.ok) throw new Error(`Błąd serwera (HTTP ${res.status}) przy zapisie "${key}"`);
-        const d = await res.json();
-        return d && d.ok === true;
+        pending.set(key, write);
+        write.finally(() => { if (pending.get(key) === write) pending.delete(key); }).catch(() => {});
+        return write;
       },
       async test() {
-        const log = [], ts = 'test_' + Date.now();
-        log.push('1. Testuję ZAPIS...');
-        try { log.push((await store.set('_diag_', ts)) ? '   ✅ OK' : '   ❌ false'); } catch(e) { log.push('   ❌ ' + e.message); }
-        log.push('2. Testuję ODCZYT...');
-        try {
-          const r = await store.get('_diag_');
-          log.push(!r ? '   ❌ brak' : r.value === ts ? '   ✅ OK: ' + r.value : '   ⚠️ ' + r.value);
-        } catch(e) { log.push('   ❌ ' + e.message); }
-        log.push('3. Dane nieruchomości...');
+        const log = ['1. Połączenie z API'];
+        try { await store.health(); log.push('   ✅ OK'); } catch(e) { log.push('   ❌ ' + e.message); return log.join('\n'); }
+        log.push('2. Dane nieruchomości...');
         for (const n of NIERUCHOMOSCI) {
           try { const r = await store.get('rental-odczyty-' + n.id); log.push('   ' + n.nazwa + ': ' + (!r ? 'brak' : '✅ ' + JSON.parse(r.value).length + ' wpisów')); }
           catch(e) { log.push('   ' + n.nazwa + ': ❌ ' + e.message); }
         }
-        log.push('4. Dane liczników gazu...');
+        log.push('3. Dane liczników gazu...');
         try {
           const r = await store.get(GAZ_KEY);
           if (!r) log.push('   brak');
@@ -151,12 +160,19 @@
     };
 
     const getNext = odczyty => {
-      if (!odczyty.length) return 'Styczeń 2026';
+      if (!odczyty.length) { const d = new Date(); return `${MIESIACE[d.getMonth()]} ${d.getFullYear()}`; }
       const [mn, rs] = odczyty[odczyty.length-1].miesiac.split(' ');
       const idx = MIESIACE.indexOf(mn), r = parseInt(rs);
-      if (idx === -1) return 'Styczeń 2026';
+      if (idx === -1 || !Number.isInteger(r)) { const d = new Date(); return `${MIESIACE[d.getMonth()]} ${d.getFullYear()}`; }
       return idx === 11 ? `Styczeń ${r+1}` : `${MIESIACE[idx+1]} ${r}`;
     };
+    const validAmount = value => value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0;
+    const recalculateReadings = (rows, id) => rows.map((item, i) => {
+      const st = { ...DEFAULT_STAWKI, ...item.stawkiSnapshot };
+      const sg = st.gaz;
+      return { ...item, ...oblicz(item.stanGazu, item.stanWody, item.prad || 0, sg,
+        i ? rows[i - 1] : null, st, id), stawkiSnapshot: st };
+    });
 
     // ══════ KARTA LICZNIKA GAZU ══════
     function KartaLicznika({ mieszkanie, odczyty, setOdczyty }) {
@@ -170,9 +186,10 @@
       const przedostatni = odczyty.length > 1 ? odczyty[odczyty.length-2] : null;
 
       const dodaj = () => {
-        const v = parseInt(stan);
-        if (!stan || isNaN(v)) { alert('Podaj stan licznika dla ' + nazwa); return; }
+        const v = Number(stan);
+        if (!validAmount(stan) || !Number.isInteger(v)) { alert('Podaj poprawny, nieujemny stan licznika dla ' + nazwa); return; }
         const prev = odczyty.length ? odczyty[odczyty.length-1] : null;
+        if (prev && v < prev.stan) { alert('Nowy stan licznika nie może być niższy od poprzedniego.'); return; }
         setOdczyty([...odczyty, { miesiac: getNext(odczyty), stan: v, zuzycie: prev ? v - prev.stan : 0 }]);
         setStan('');
       };
@@ -180,10 +197,12 @@
       const startEdit = i => { setEditStan(String(odczyty[i].stan)); setEditMode(true); setEditIndex(i); };
       const anuluj    = () => { setEditMode(false); setEditIndex(null); setEditStan(''); };
       const zapiszEdycje = () => {
-        const v = parseInt(editStan);
-        if (isNaN(v)) return;
+        const v = Number(editStan);
+        if (!validAmount(editStan) || !Number.isInteger(v)) { alert('Podaj poprawny stan licznika.'); return; }
         const kopia = [...odczyty];
         const prev = editIndex > 0 ? kopia[editIndex-1] : null;
+        const next = kopia[editIndex+1];
+        if ((prev && v < prev.stan) || (next && v > next.stan)) { alert('Stan musi mieścić się między sąsiednimi odczytami.'); return; }
         kopia[editIndex] = { ...kopia[editIndex], stan: v, zuzycie: prev ? v - prev.stan : 0 };
         if (editIndex + 1 < kopia.length) kopia[editIndex+1] = { ...kopia[editIndex+1], zuzycie: kopia[editIndex+1].stan - v };
         setOdczyty(kopia); anuluj();
@@ -321,11 +340,6 @@
       };
 
       useEffect(() => { if (loaded) saveAll(daneGaz); }, [daneGaz]);
-      useEffect(() => {
-        if (!loaded) return;
-        const t = setInterval(() => saveAll(daneRef.current), 60000);
-        return () => clearInterval(t);
-      }, [loaded]);
 
       return (
         <div style={{ minHeight:'100vh', background:'linear-gradient(135deg,#1a0a00,#2d1200,#4a1e00)', padding:'2rem' }}>
@@ -353,7 +367,7 @@
 
             {saveError && (
               <div style={{ background:'#4a0000', border:'1px solid #ff8a80', color:'#ffcdd2', padding:'0.875rem 1.25rem', borderRadius:'10px', marginBottom:'1.25rem', fontSize:'0.9rem' }}>
-                ⚠️ Nie udało się zapisać: {saveError}. Dane w przeglądarce są bezpieczne — spróbuj ponownie kliknąć "Zapisz".
+                ⚠️ Nie udało się zapisać: {saveError}. Pozostaw tę kartę otwartą i spróbuj ponownie kliknąć "Zapisz".
               </div>
             )}
 
@@ -369,7 +383,7 @@
             ) : !loaded ? (
               <div style={{ textAlign:'center', color:'#ffccbc', padding:'3rem', fontSize:'1.1rem' }}>⏳ Ładowanie danych…</div>
             ) : (
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))', gap:'1.25rem' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,240px),1fr))', gap:'1.25rem' }}>
                 {MIESZKANIA_GAZ.map(m => (
                   <KartaLicznika key={m.id} mieszkanie={m}
                     odczyty={daneGaz[m.id] || []}
@@ -387,6 +401,7 @@
       const { id, nazwa, kolor, kolor2 } = nieruchomosc;
       const SK = `rental-stawki-${id}`, OK = `rental-odczyty-${id}`;
       const [stawki,     setStawki]     = useState({ ...DEFAULT_STAWKI });
+      const [rateDrafts, setRateDrafts] = useState({});
       const [odczyty,    setOdczyty]    = useState([]);
       const [form,       setForm]       = useState({ stanGazu:'', stanWody:'', prad:'', stawkaGazu:'' });
       const [editMode,   setEditMode]   = useState(false);
@@ -432,25 +447,23 @@
       };
 
       useEffect(() => { if (loaded) saveAll(odczyty, stawki); }, [odczyty, stawki]);
-      useEffect(() => {
-        if (!loaded) return;
-        const t = setInterval(() => saveAll(odczytyRef.current, stawkiRef.current), 60000);
-        return () => clearInterval(t);
-      }, [loaded]);
 
       const dodaj = () => {
-        if (!form.stanGazu || !form.stanWody) { alert('Wypełnij stany liczników'); return; }
-        const stanGazu = parseFloat(form.stanGazu), stanWody = parseFloat(form.stanWody);
-        const prad = form.prad ? parseFloat(form.prad) : 0;
-        const sg   = form.stawkaGazu ? parseFloat(form.stawkaGazu) : stawki.gaz;
+        if (!validAmount(form.stanGazu) || !validAmount(form.stanWody) ||
+            (form.prad !== '' && !validAmount(form.prad)) ||
+            (form.stawkaGazu !== '' && !validAmount(form.stawkaGazu))) { alert('Wpisz poprawne, nieujemne wartości.'); return; }
+        const stanGazu = Number(form.stanGazu), stanWody = Number(form.stanWody);
+        const prad = form.prad === '' ? 0 : Number(form.prad);
+        const sg   = form.stawkaGazu === '' ? stawki.gaz : Number(form.stawkaGazu);
         const prev = odczyty.length ? odczyty[odczyty.length-1] : null;
+        if (prev && (stanGazu < prev.stanGazu || stanWody < prev.stanWody)) { alert('Stany liczników nie mogą być niższe od poprzedniego miesiąca.'); return; }
         const stEff = id === 'chrobrego' ? { ...stawki, czynsz:0 } : stawki;
         const obl  = oblicz(stanGazu, stanWody, prad, sg, prev, stEff, id);
         setOdczyty([...odczyty, { miesiac:getNext(odczyty), stanGazu, stanWody, prad, ...obl, stawkiSnapshot:{ ...stEff, gaz:sg } }]);
         setForm({ stanGazu:'', stanWody:'', prad:'', stawkaGazu:'' });
       };
 
-      const usun = i => { if (!window.confirm('Usunąć ten odczyt?')) return; setOdczyty(odczyty.filter((_,j) => j !== i)); };
+      const usun = i => { if (!window.confirm('Usunąć ten odczyt? Następne miesiące zostaną przeliczone.')) return; setOdczyty(recalculateReadings(odczyty.filter((_,j) => j !== i), id)); };
 
       const startEdit = i => {
         const o = odczyty[i];
@@ -459,15 +472,23 @@
       };
 
       const zapiszEdycje = () => {
-        const stanGazu = parseFloat(form.stanGazu), stanWody = parseFloat(form.stanWody);
-        const prad = form.prad ? parseFloat(form.prad) : 0;
-        const sg   = form.stawkaGazu ? parseFloat(form.stawkaGazu) : stawki.gaz;
+        if (!validAmount(form.stanGazu) || !validAmount(form.stanWody) ||
+            (form.prad !== '' && !validAmount(form.prad)) ||
+            (form.stawkaGazu !== '' && !validAmount(form.stawkaGazu))) { alert('Wpisz poprawne, nieujemne wartości.'); return; }
+        const stanGazu = Number(form.stanGazu), stanWody = Number(form.stanWody);
+        const prad = form.prad === '' ? 0 : Number(form.prad);
+        const original = odczyty[editIndex];
+        const sg = form.stawkaGazu === '' ? original.stawkiSnapshot.gaz : Number(form.stawkaGazu);
         const prev = editIndex > 0 ? odczyty[editIndex-1] : null;
-        const stEff = id === 'chrobrego' ? { ...stawki, czynsz:0 } : stawki;
-        const obl  = oblicz(stanGazu, stanWody, prad, sg, prev, stEff, id);
+        const next = odczyty[editIndex+1];
+        if ((prev && (stanGazu < prev.stanGazu || stanWody < prev.stanWody)) ||
+            (next && (stanGazu > next.stanGazu || stanWody > next.stanWody))) {
+          alert('Stany liczników muszą mieścić się między sąsiednimi miesiącami.'); return;
+        }
+        const snapshot = { ...DEFAULT_STAWKI, ...original.stawkiSnapshot, gaz:sg };
         const kopia = [...odczyty];
-        kopia[editIndex] = { ...kopia[editIndex], stanGazu, stanWody, prad, ...obl, stawkiSnapshot:{ ...stEff, gaz:sg } };
-        setOdczyty(kopia); anuluj();
+        kopia[editIndex] = { ...original, stanGazu, stanWody, prad, stawkiSnapshot:snapshot };
+        setOdczyty(recalculateReadings(kopia, id)); anuluj();
       };
 
       const anuluj = () => { setEditMode(false); setEditIndex(null); setForm({ stanGazu:'', stanWody:'', prad:'', stawkaGazu:'' }); };
@@ -559,7 +580,7 @@
 
             {saveError && (
               <div style={{ background:'#fdecea', border:'1px solid #f5c6cb', color:'#c62828', padding:'0.875rem 1.25rem', fontSize:'0.9rem' }}>
-                ⚠️ Nie udało się zapisać: {saveError}. Dane w przeglądarce są bezpieczne — spróbuj ponownie kliknąć "Zapisz".
+                ⚠️ Nie udało się zapisać: {saveError}. Pozostaw tę kartę otwartą i spróbuj ponownie kliknąć "Zapisz".
               </div>
             )}
 
@@ -573,8 +594,15 @@
                     <div style={{ display:'flex', alignItems:'center', gap:'0.4rem', marginBottom:'0.5rem', color:'#5d4037', fontSize:'0.85rem', fontWeight:600 }}>
                       <Icon name={iconName} size={18} color={iconColor}/> {label}
                     </div>
-                    <input type="number" step="0.1" value={parseFloat(stawki[key]).toFixed(1)}
-                      onChange={e => setStawki({ ...stawki, [key]: parseFloat(parseFloat(e.target.value).toFixed(1)) || 0 })}
+                    <input type="number" min="0" step="0.01" value={rateDrafts[key] ?? String(stawki[key])}
+                      onChange={e => setRateDrafts(prev => ({ ...prev, [key]: e.target.value }))}
+                      onBlur={() => {
+                        const draft = rateDrafts[key];
+                        if (draft === undefined) return;
+                        if (validAmount(draft)) setStawki(prev => ({ ...prev, [key]:Number(draft) }));
+                        else alert('Stawka musi być liczbą nieujemną.');
+                        setRateDrafts(prev => { const next = { ...prev }; delete next[key]; return next; });
+                      }}
                       style={{ ...IS, fontSize:'1.05rem', fontWeight:700, border:`2px solid ${kolor}`, color:kolor, textAlign:'center' }}/>
                   </div>
                 ))}
@@ -649,7 +677,9 @@
                     ];
                     return (
                       <div key={i} style={{ border:'1px solid #e8dcc8', borderRadius:'10px', overflow:'hidden' }}>
-                        <div onClick={()=>toggle(i)} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0.75rem 1.125rem', background:open?'#f5efe6':'#faf8f5', cursor:'pointer', borderBottom:open?'1px solid #e8dcc8':'none' }}>
+                        <div role="button" tabIndex={0} aria-expanded={open} aria-label={`${o.miesiac}: szczegóły rozliczenia`}
+                          onClick={()=>toggle(i)} onKeyDown={e=>{ if (e.target===e.currentTarget && (e.key==='Enter'||e.key===' ')) { e.preventDefault(); toggle(i); } }}
+                          style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0.75rem 1.125rem', background:open?'#f5efe6':'#faf8f5', cursor:'pointer', borderBottom:open?'1px solid #e8dcc8':'none' }}>
                           <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
                             <div style={{ width:26, height:26, borderRadius:'50%', background:'#e8dcc8', display:'flex', alignItems:'center', justifyContent:'center' }}>
                               <Icon name={open?'ChevronUp':'ChevronDown'} size={14} color={kolor}/>
@@ -692,14 +722,18 @@
     function Podsumowanie({ onBack }) {
       const [dane, setDane] = useState({});
       const [loaded, setLoaded] = useState(false);
+      const [loadError, setLoadError] = useState('');
       useEffect(() => {
         (async () => {
           const wynik = {};
-          for (const n of NIERUCHOMOSCI) {
-            try { const o = await store.get(`rental-odczyty-${n.id}`); wynik[n.id] = o ? JSON.parse(o.value) : []; }
-            catch { wynik[n.id] = []; }
-          }
-          setDane(wynik); setLoaded(true);
+          try {
+            for (const n of NIERUCHOMOSCI) {
+              const o = await store.get(`rental-odczyty-${n.id}`);
+              wynik[n.id] = o ? JSON.parse(o.value) : [];
+              if (!Array.isArray(wynik[n.id])) throw new Error('Nieprawidłowy format danych: ' + n.nazwa);
+            }
+            setDane(wynik); setLoaded(true);
+          } catch (err) { setLoadError(err.message || 'Nie udało się odczytać danych'); }
         })();
       }, []);
       const ostatni = id => { const od = dane[id]; return od&&od.length ? od[od.length-1] : null; };
@@ -716,7 +750,9 @@
                 <h1 style={{ margin:0, fontSize:'1.9rem', fontWeight:700 }}>Podsumowanie – Wszystkie Nieruchomości</h1>
               </div>
             </div>
-            {!loaded ? (
+            {loadError ? (
+              <div role="alert" style={{ background:'white', padding:'2rem', color:'#b42318' }}>Nie udało się wczytać podsumowania: {loadError}. Wróć i spróbuj ponownie.</div>
+            ) : !loaded ? (
               <div style={{ background:'white', padding:'3rem', textAlign:'center', color:'#888' }}>⏳ Ładowanie danych…</div>
             ) : (
               <>
@@ -726,7 +762,7 @@
                 </div>
                 <div style={{ background:'white', padding:'2rem', borderLeft:'4px solid #6a2fbd', marginTop:'1rem', borderRadius:'0 0 16px 0' }}>
                   <h2 style={{ margin:'0 0 1.25rem', color:'#4a1a8a', fontSize:'1.2rem' }}>Ostatnie rozliczenia</h2>
-                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))', gap:'1.25rem' }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(min(100%,280px),1fr))', gap:'1.25rem' }}>
                     {NIERUCHOMOSCI.map(n => {
                       const o = ostatni(n.id); const ods = dane[n.id]||[];
                       return (
@@ -777,12 +813,46 @@
       const [aktywna, setAktywna] = useState(null);
       const [diagLog, setDiagLog] = useState('');
       const [diagRunning, setDiagRunning] = useState(false);
+      const [authorized, setAuthorized] = useState(false);
+      const [tokenInput, setTokenInput] = useState('');
+      const [loginError, setLoginError] = useState('');
+      const [checking, setChecking] = useState(false);
+
+      useEffect(() => {
+        if (!auth.getToken()) return;
+        store.health().then(() => setAuthorized(true)).catch(() => auth.clear());
+      }, []);
+      const signIn = async e => {
+        e.preventDefault();
+        setChecking(true); setLoginError('');
+        auth.setToken(tokenInput.trim());
+        try { await store.health(); setAuthorized(true); setTokenInput(''); }
+        catch (err) { auth.clear(); setLoginError(err.message || 'Nie można połączyć z API'); }
+        finally { setChecking(false); }
+      };
 
       const runDiag = async () => {
         setDiagRunning(true); setDiagLog('Testuję połączenie…');
         setDiagLog(await store.test()); setDiagRunning(false);
       };
 
+      if (!authorized) return (
+        <div style={{ minHeight:'100vh', background:'radial-gradient(circle at 20% 10%,#244876,#101d37 60%,#0c1426)', display:'grid', placeItems:'center', padding:'1.25rem' }}>
+          <form onSubmit={signIn} style={{ width:'100%', maxWidth:440, background:'white', borderRadius:22, padding:'clamp(1.5rem,5vw,2.5rem)', boxShadow:'0 22px 60px #050e2080' }}>
+            <div style={{ fontSize:'2.2rem', marginBottom:12 }}>🏠</div>
+            <h1 style={{ fontSize:'1.7rem', color:'#172b4d', marginBottom:8 }}>Rozliczenia najmu</h1>
+            <p style={{ color:'#64748b', lineHeight:1.5, marginBottom:26 }}>Wpisz prywatny klucz dostępu do rozliczeń.</p>
+            <label htmlFor="api-token" style={{ display:'block', fontWeight:700, marginBottom:8 }}>Klucz dostępu</label>
+            <input id="api-token" type="password" autoComplete="off" required value={tokenInput}
+              onChange={e=>setTokenInput(e.target.value)} placeholder="Wpisz klucz" style={{ ...IS, marginBottom:16 }}/>
+            {loginError && <p role="alert" style={{ color:'#b42318', marginBottom:14 }}>{loginError}</p>}
+            <button type="submit" disabled={checking} style={{ width:'100%', padding:'0.9rem', border:0, borderRadius:10, color:'white', background:'#17478b', fontWeight:700, cursor:'pointer' }}>
+              {checking ? 'Sprawdzam…' : 'Otwórz rozliczenia'}
+            </button>
+            <p style={{ color:'#64748b', fontSize:'.8rem', marginTop:18, lineHeight:1.5 }}>Klucz pozostaje w tej karcie do jej zamknięcia.</p>
+          </form>
+        </div>
+      );
       if (aktywna === 'podsumowanie')    return <Podsumowanie    onBack={()=>setAktywna(null)}/>;
       if (aktywna === 'rozliczenieGazu') return <RozliczenieGazu onBack={()=>setAktywna(null)}/>;
       if (aktywna) { const n = NIERUCHOMOSCI.find(n=>n.id===aktywna); return <Arkusz nieruchomosc={n} onBack={()=>setAktywna(null)}/>; }
@@ -795,6 +865,7 @@
               <h1 style={{ margin:0, fontSize:'2.5rem', fontWeight:800, color:'white' }}>Zarządzanie Wynajmem</h1>
             </div>
             <p style={{ margin:0, color:'#94a3b8', fontSize:'1.1rem' }}>Wybierz nieruchomość lub zakładkę</p>
+            <button onClick={()=>{auth.clear();lastRead.clear();setAuthorized(false);}} style={{ marginTop:16, background:'transparent', color:'#cbd5e1', border:'1px solid #64748b', padding:'0.45rem 1rem', borderRadius:9, cursor:'pointer' }}>Wyloguj</button>
           </div>
 
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(230px,1fr))', gap:'1.5rem', width:'100%', maxWidth:1200 }}>
